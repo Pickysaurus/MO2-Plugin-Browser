@@ -21,7 +21,7 @@ this_plugin: ManagedPlugin = {
     "name": "Plugin Browser for Mod Organizer 2",
     "mod_id": 1742,
     "version": mobase.VersionInfo(1, 0, 0, mobase.ReleaseType.CANDIDATE).displayString(),
-    "group_id": 0,
+    "group_id": 7243541,
     "files": None
 }
 
