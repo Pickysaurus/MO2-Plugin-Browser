@@ -138,7 +138,6 @@ class UpdateWorker(QObject):
     def run(self):
         """The main loop that runs inside the QThread."""
         self.api.check_thread_affinity()
-        self.manager.logger.info("Background update check started.")
         for plugin in self.manager.get_all():
             self.manager.logger.info(f"Checking for update on {plugin['name']}")
             uid = plugin["uid"]
@@ -150,11 +149,13 @@ class UpdateWorker(QObject):
                 # 1. Fetch files from Nexus
                 resp = self.api.get_mod_files(mod_id)
                 if not resp or "modFiles" not in resp:
-                    continue
+                    self.manager.logger.info(f"No update for {plugin['name']} ({plugin["version"]}) - No files on mod page")
+                    continue 
 
                 # 2. Filter by group and sort by newest timestamp
                 group_files = [f for f in resp["modFiles"] if f.get("groupId") == group_id]
                 if not group_files:
+                    self.manager.logger.info(f"No update for {plugin['name']} ({plugin["version"]}) - No files in group {group_id}")
                     continue
 
                 latest = sorted(group_files, key=lambda x: x.get("date", 0), reverse=True)[0]
@@ -169,8 +170,10 @@ class UpdateWorker(QObject):
                         latest["fileId"]
                     )
                     self.update_found.emit(uid, latest, plugin)
+                else: self.manager.logger.info(f"No update for {plugin['name']} ({plugin["version"]})")
 
             except Exception as e:
                 self.manager.logger.warning(f"Update check failed for {plugin['name']}: {e}")
+                
 
         self.finished.emit()
