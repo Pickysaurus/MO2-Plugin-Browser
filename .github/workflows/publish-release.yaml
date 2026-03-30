@@ -26,7 +26,7 @@ jobs:
             VERSION="$INPUT_VERSION"
           else
             VERSION=$(python3 -c "import re; \
-                content = open('constants.py').read(); \
+                content = open('Mod Organizer Plugin Browser/constants.py').read(); \
                 match = re.search(r'VersionInfo\((\d+),\s*(\d+),\s*(\d+)\)', content); \
                 print(f'{match.group(1)}.{match.group(2)}.{match.group(3)}') if match else exit(1)")
           fi
