@@ -72,6 +72,6 @@ jobs:
         with:
           api_key: ${{ secrets.NEXUSMODS_API_KEY }}
           file_group_id: ${{ vars.NEXUSMODS_FILE_GROUP }}
-          display_name: Import from Bethesda.net
+          display_name: MO2 Plugin Browser
           filename: Mod-Organizer-Plugin-Browser-v${{ steps.get_version.outputs.VERSION }}.zip
           version: ${{ steps.get_version.outputs.VERSION }}
