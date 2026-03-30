@@ -2,7 +2,7 @@ import logging
 import mobase # type: ignore
 from PyQt6.QtGui import QIcon # type: ignore
 from PyQt6.QtCore import QCoreApplication # type: ignore
-
+from .constants import MAIN_PLUGIN_NAME, VERSION, AUTHOR
 from .nexusmods_api import NexusModsAPI
 from .nexusmods.nexus_mods_types import PluginCategoryType, ModSortType
 from .ui.ui_main import BrowserDialog
@@ -34,33 +34,22 @@ class PluginBrowser(mobase.IPluginTool):
         self.installed_handler = ManagedPlugins(self.api)
         return True
 
-    def displayName(self) -> str:
-        return "Plugin Browser"
+    def displayName(self) -> str: return MAIN_PLUGIN_NAME
     
-    def name(self) -> str:
-        return "Plugin Browser"
+    def name(self) -> str: return MAIN_PLUGIN_NAME
 
-    def author(self) -> str:
-        return "Pickysaurus"
+    def author(self) -> str: return AUTHOR
 
-    def description(self) -> str:
-        return "Install and manage plugins for MO2"
+    def description(self) -> str: return "Install and manage plugins for MO2"
     
-    def tooltip(self) -> str:
-        return "Install and manage plugins for MO2"
+    def tooltip(self) -> str: return "Install and manage plugins for MO2"
 
-    def version(self) -> mobase.VersionInfo:
-        return mobase.VersionInfo(1, 0, 0, mobase.ReleaseType.FINAL)
+    def version(self) -> mobase.VersionInfo: return VERSION
 
-    def isActive(self):
-        try:
-            return self.__organizer.pluginSetting(self.name(), "enabled") # pyright: ignore[reportOptionalMemberAccess]
-        except Exception:
-            return True
+    def isActive(self) -> bool: return True
 
     def settings(self) -> list[mobase.PluginSetting]:
         return [
-            mobase.PluginSetting("enabled", self.__tr("Enables the plugin"), True),
             mobase.PluginSetting("api_key", self.__tr("Nexus Mods API Key"), "")
         ]
 

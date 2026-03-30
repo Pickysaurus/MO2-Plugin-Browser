@@ -1,0 +1,75 @@
+name: Create Release
+
+on:
+  push:
+    branches:
+      - main  # Triggers when you push or merge to main
+  workflow_dispatch:
+    inputs:
+        version:
+            description: 'Release version - package.json version will be used by default'
+            required: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Extract Version from constants.py
+        id: get_version
+        run: |
+          # Use regex to find VersionInfo(1, 0, 1) and format it as 1.0.1.
+          INPUT_VERSION="${{ github.event.inputs.version }}"
+          if [ -n "$INPUT_VERSION" ]; then
+            VERSION="$INPUT_VERSION"
+          else
+            VERSION=$(python3 -c "import re; \
+                content = open('constants.py').read(); \
+                match = re.search(r'VersionInfo\((\d+),\s*(\d+),\s*(\d+)\)', content); \
+                print(f'{match.group(1)}.{match.group(2)}.{match.group(3)}') if match else exit(1)")
+          fi
+          
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+          echo "Detected Plugin Version: $VERSION"
+
+      - name: Create Zip Archive
+        run: |
+          # Create the zip. This includes the folder 'Mod Organizer Plugin Browser' at the top level.
+          # We exclude git metadata and python cache files to keep it clean.
+          zip -r "Mod-Organizer-Plugin-Browser-v${{ steps.get_version.outputs.VERSION }}.zip" \
+          "Mod Organizer Plugin Browser" \
+          -x "*.git*" "__pycache__*" "*.pyc" ".DS_Store"
+
+      - name: Create GitHub Tag
+        run: |
+          git tag v${{ steps.get_version.outputs.VERSION }}
+          git push origin v${{ steps.get_version.outputs.VERSION }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.get_version.outputs.VERSION }}
+          name: Release v${{ steps.get_version.outputs.VERSION }}
+          files: Mod-Organizer-Plugin-Browser-v${{ steps.get_version.outputs.VERSION }}.zip
+          body: |
+            Automated release for version ${{ steps.get_version.outputs.VERSION }}.
+            
+            ### Changes
+            - Update to Plugin Browser version ${{ steps.get_version.outputs.VERSION }}
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload to Nexus Mods
+        uses: Nexus-Mods/upload-action@main
+        with:
+          api_key: ${{ secrets.NEXUSMODS_API_KEY }}
+          file_group_id: ${{ vars.NEXUSMODS_FILE_GROUP }}
+          display_name: Import from Bethesda.net
+          filename: Mod-Organizer-Plugin-Browser-v${{ steps.get_version.outputs.VERSION }}.zip
+          version: ${{ steps.get_version.outputs.VERSION }}

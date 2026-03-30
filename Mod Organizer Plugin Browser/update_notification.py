@@ -1,6 +1,7 @@
 import logging
 from PyQt6.QtCore import QCoreApplication # type: ignore
 import mobase # type: ignore
+from .constants import UPDATE_PLUGIN_NAME, VERSION, AUTHOR
 from .messenger import BUS
 from .utility.managed_plugins import ManagedPlugin
 
@@ -20,11 +21,11 @@ class PluginBrowserUpdates(mobase.IPluginDiagnose):
         BUS.update_installed.connect(self._on_update_installed)
         return True
     
-    def name(self) -> str: return "Plugin Browser Updates"
-    def localizedName(self) -> str: return "Plugin Browser Updates"
-    def author(self) -> str: return "Pickysaurus"
+    def name(self) -> str: return UPDATE_PLUGIN_NAME
+    def localizedName(self) -> str: return UPDATE_PLUGIN_NAME
+    def author(self) -> str: return AUTHOR
     def description(self) -> str: return "Monitors for plugin updates"
-    def version(self) -> mobase.VersionInfo: return mobase.VersionInfo(1, 0, 0)
+    def version(self) -> mobase.VersionInfo: return VERSION
     def settings(self) -> list: return []
 
     def activeProblems(self) -> list[int]:
