@@ -79,7 +79,7 @@ class PluginBrowser(mobase.IPluginTool):
 
     def load_initial_results(self):
         assert self.api is not None
-        searchRes = self.api.get_mo2_extensions()
+        searchRes = self.api.get_mo2_extensions(sort="Updated At")
         plugins = self.get_installed_plugins()
         uids = [plugin['uid'] for plugin in plugins] if plugins else []
 

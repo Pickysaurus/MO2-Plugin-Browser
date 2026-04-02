@@ -72,6 +72,7 @@ class PluginGridView(QWidget):
             "Created At",
             "Updated At"
         ])
+        self.sort_dropdown.setCurrentText("Updated At")
         self.sort_dropdown.setFixedWidth(150)
         self.sort_dropdown.setStyleSheet("""
             QComboBox {

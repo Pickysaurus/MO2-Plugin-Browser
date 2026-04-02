@@ -3,7 +3,7 @@ from PyQt6.QtCore import Qt, QUrl # type: ignore
 from PyQt6.QtWidgets import QHBoxLayout, QVBoxLayout, QLabel, QFrame # type: ignore
 from PyQt6.QtNetwork import QNetworkReply, QNetworkAccessManager, QNetworkRequest # type: ignore
 from PyQt6.QtCore import QUrl, Qt, pyqtSignal # type: ignore
-from PyQt6.QtGui import QMouseEvent, QPixmap, QPainter, QPainterPath, QFontMetrics # type: ignore
+from PyQt6.QtGui import QMouseEvent, QPixmap, QPainter, QPainterPath, QFontMetrics, QTextLayout, QTextOption # type: ignore
 
 from ..utility.image_loader import ImageManager
 from ..nexusmods.nexus_mods_types import ModNode
@@ -50,10 +50,11 @@ class ModTile(QFrame):
         self.name_label = QLabel()
         self.name_label.setToolTip(full_name)
         self.name_label.setWordWrap(True)
+        self.name_label.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
         self.name_label.setStyleSheet("font-weight: bold; font-size: 10pt; padding: 1px; color: palette(window-text);")
 
         # Use the helper to set elided text (approx 180px width for 2 lines)
-        elide_multiline_text(self.name_label, full_name, 180, 2)
+        elide_multiline_text(self.name_label, full_name, 2)
 
         # Set a fixed height for 2 lines to keep tiles perfectly aligned
         metrics = QFontMetrics(self.name_label.font())
@@ -296,22 +297,46 @@ def get_relative_date(date_str: str) -> str:
     except Exception:
         return date_str
     
-def elide_multiline_text(label: QLabel, text: str, width: int, max_lines: int):
-    """Truncates text to fit within a specific number of lines with an ellipsis."""
+def elide_multiline_text(label: QLabel, text: str, max_lines: int):
+    label.ensurePolished()
+    # Use a safe width to prevent the "ghost 3rd line"
+    width = label.contentsRect().width() - 4 
+    if width <= 0: return
+
     metrics = QFontMetrics(label.font())
-    line_height = metrics.lineSpacing()
-    max_height = line_height * max_lines
+    layout = QTextLayout(text, label.font())
+    layout.setTextOption(QTextOption(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop))
+    layout.textOption().setWrapMode(QTextOption.WrapMode.WrapAtWordBoundaryOrAnywhere)
     
-    # Check if the original text already fits
-    rect = metrics.boundingRect(0, 0, width, 1000, Qt.TextFlag.TextWordWrap, text)
-    if rect.height() <= max_height:
+    layout.beginLayout()
+    lines = []
+    while True:
+        line = layout.createLine()
+        if not line.isValid(): break
+        line.setLineWidth(width)
+        lines.append(line)
+    layout.endLayout()
+
+    # If it fits perfectly, just set the text and clear any tooltip
+    if len(lines) <= max_lines:
         label.setText(text)
+        label.setToolTip("") 
         return
 
-    # Iteratively shorten the text until it fits within the max height
-    for i in range(len(text), 0, -1):
-        truncated = text[:i].strip() + "..."
-        rect = metrics.boundingRect(0, 0, width, 1000, Qt.TextFlag.TextWordWrap, truncated)
-        if rect.height() <= max_height:
-            label.setText(truncated)
-            break
+    # Build the display text
+    final_text = ""
+    for i in range(max_lines - 1):
+        start = lines[i].textStart()
+        length = lines[i].textLength()
+        final_text += text[start : start + length]
+
+    # Grab everything from the start of the last allowed line to the very end
+    last_line_start = lines[max_lines - 1].textStart()
+    remaining_text = text[last_line_start:].replace('\n', ' ').strip()
+
+    # Force the ellipsis using elidedText
+    elided_line = metrics.elidedText(remaining_text, Qt.TextElideMode.ElideRight, width)
+    
+    # Set the text and add a ToolTip so users can see the full title on hover
+    label.setText(final_text + elided_line)
+    label.setToolTip(text)
