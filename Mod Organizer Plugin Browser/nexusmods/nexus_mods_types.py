@@ -29,7 +29,7 @@ class ModNode(TypedDict):
     updatedAt: str
     uploader: Uploader
     viewerDownloaded: bool
-    viewerEndorsed: bool
+    viewerEndorsed: bool | None
     viewerTracked: bool
     viewerUpdateAvailable: bool
     viewerIsBlocked: bool
@@ -70,3 +70,16 @@ class ModFilesResult(TypedDict):
 
 class NexusModsFileListResponse(TypedDict):
     modFiles: List[ModFilesResult]
+
+class GroupFile(TypedDict):
+    id: str
+    game_scoped_id: str
+    name: str
+    version: str
+    category: str
+    upload_at: str
+
+class NexusModsFilesInGroup(TypedDict):
+    id: str
+    position: str
+    file: GroupFile

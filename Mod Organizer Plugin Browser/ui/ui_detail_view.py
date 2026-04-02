@@ -2,10 +2,10 @@ import logging
 from mobase import IOrganizer # type: ignore
 from PyQt6.QtWidgets import ( # type: ignore
     QDialog, QWidget, QVBoxLayout, QPushButton, QScrollArea, QLabel, QFrame, QHBoxLayout,
+    QGraphicsOpacityEffect
 )
 from PyQt6.QtCore import Qt, QUrl # type: ignore
 from PyQt6.QtGui import QPixmap, QDesktopServices # type: ignore
-from pathlib import Path
 
 from ..nexusmods.nexus_mods_types import ModNode
 from ..nexusmods_api import NexusModsAPI
@@ -35,7 +35,7 @@ class DetailView(QWidget):
         self.installed_manager = installManager
         self.installer = pluginInstaller
         self.image_manager = image_manager
-        self.update_checker_temp = UpdateChecker(api, installManager)
+        self.update_checker_temp = UpdateChecker(api)
         self.mod_node: ModNode | None = None
         layout = QVBoxLayout(self)
 
@@ -125,6 +125,10 @@ class DetailView(QWidget):
             padding: 4px;
         """
         button_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.endorse_btn = QPushButton("👍ENDORSE")
+        self.endorse_btn.setVisible(False)
+        self.endorse_btn.setStyleSheet(button_styles)
+        self.endorse_btn.clicked.connect(self.handle_endorse_clicked)
         self.download_btn = QPushButton("DOWNLOAD")
         self.download_btn.setDisabled(True)
         self.download_btn.setFixedWidth(200)
@@ -145,6 +149,7 @@ class DetailView(QWidget):
         self.nexus_mods_btn.setDisabled(True)
         self.nexus_mods_btn.clicked.connect(self.open_mod_page)
 
+        button_layout.addWidget(self.endorse_btn)
         button_layout.addWidget(self.download_btn)
         button_layout.addWidget(self.update_btn)
         button_layout.addWidget(self.uninstall_btn)
@@ -198,10 +203,17 @@ class DetailView(QWidget):
                     self.update_btn.setVisible(True)
                     self.update_btn.setText(f"UPDATE (v{installed_data.get("latest_version")})")
             self.download_btn.setDisabled(True)
+            self.endorse_btn.setVisible(True)
+            if mod_node["viewerEndorsed"] == True:
+                self.endorse_btn.setText("✅ ENDORSED")
+            else:
+                self.endorse_btn.setText("👍 ENDORSE")
         else:
             self.download_btn.setText(f"DOWNLOAD")
-            self.download_btn.setDisabled(False)
+            self.set_button_enabled(self.download_btn)
             self.update_btn.setVisible(False)
+            self.endorse_btn.setVisible(False)
+            self.endorse_btn.setEnabled(True)
 
     def _set_image(self, pixmap: QPixmap | None, url: str):
         if pixmap and not self.isHidden():
@@ -272,6 +284,27 @@ class DetailView(QWidget):
         self.installed_manager.remove_managed_plugin(installed_data["uid"])
         self.uninstall_btn.setEnabled(False)
 
+    def handle_endorse_clicked(self):
+        if not self.mod_node: return
+        id = self.mod_node["modId"]
+        if not id: return
+
+        prev_state = self.mod_node["viewerEndorsed"]
+
+        self.endorse_btn.setEnabled(False)
+        success = self.api.endorse_mod("site", id) if prev_state != True else self.api.abstain_mod("site", id)
+        if success:
+            if prev_state == True:
+                self.endorse_btn.setText("👍 ENDORSE")
+                self.mod_node["viewerEndorsed"] = False
+            else:
+                self.endorse_btn.setText("✅ ENDORSED")
+                self.mod_node["viewerEndorsed"] = True
+        else:
+            LOGGER.warning(f"Failed to endorse {self.mod_node["name"]}")
+            
+        self.endorse_btn.setEnabled(True)
+
     def _on_download_started(self, dl_id):
         self.download_btn.setEnabled(False)
 
@@ -290,3 +323,10 @@ class DetailView(QWidget):
         LOGGER.error(f"Error downloading mod: {message}, {str(e)}");
         self.download_btn.setEnabled(True)
         self.download_btn.setVisible(True)
+
+    def set_button_enabled(self, button: QPushButton, enabled: bool = True):
+        opacity = 0.7 if not enabled else 1
+        effect = QGraphicsOpacityEffect(button)
+        effect.setOpacity(opacity)
+        button.setEnabled(enabled)
+        button.setGraphicsEffect(effect)

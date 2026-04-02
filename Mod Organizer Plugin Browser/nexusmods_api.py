@@ -5,7 +5,10 @@ from PyQt6.QtCore import QUrl # type: ignore
 
 from .nexusmods.nexus_mods_client import NexusClient
 from .nexusmods.nexus_mods_queries import GET_MO2_EXTENSIONS, GET_MOD_FILES, GET_MODS_BY_UID
-from .nexusmods.nexus_mods_types import NexusExtensionsResponse, NexusModsFileListResponse, NexusModsByUidResponse, PluginCategoryType, ModSortType
+from .nexusmods.nexus_mods_types import (
+    NexusExtensionsResponse, NexusModsFileListResponse, NexusModsByUidResponse, PluginCategoryType, ModSortType,
+    NexusModsFilesInGroup
+)
 
 LOGGER = logging.getLogger("MO2PluginsNexusModsAPI")
 
@@ -132,3 +135,34 @@ class NexusModsAPI(NexusClient):
         groups = reply_data.get("data", {}).get("groups", None)
         
         return groups
+    
+    def get_files_in_group(self, group_id: int) -> Optional[list[NexusModsFilesInGroup]]:
+        path = f"/v3/file-update-groups/{group_id}/versions"
+        url = QUrl(f"{self.base_url}/{path}")
+
+        # REST call
+        reply_data = self.send_request("GET", url, requires_auth=True)
+        if not reply_data: return
+
+        versions: list[NexusModsFilesInGroup] | None = reply_data.get("data", {}).get("versions", None)
+        return versions
+
+    
+    def endorse_mod(self, game_domain: str, mod_id: int) -> bool:
+        LOGGER.info(f"Endorsing {game_domain}/{mod_id}")
+        path = f"v1/games/{game_domain}/mods/{mod_id}/endorse.json"
+        url = QUrl(f"{self.base_url}/{path}")
+
+        reply_data = self.send_request("POST", url, requires_auth=True)
+        if not reply_data: return False
+        return True
+
+    def abstain_mod(self, game_domain: str, mod_id: int) -> bool:
+        LOGGER.info(f"Abstaining {game_domain}/{mod_id}")
+        path = f"v1/games/{game_domain}/mods/{mod_id}/abstain.json"
+        url = QUrl(f"{self.base_url}/{path}")
+
+        reply_data = self.send_request("POST", url, requires_auth=True)
+        if not reply_data: return False
+        LOGGER.info(f"Abstain reply {reply_data}")
+        return True

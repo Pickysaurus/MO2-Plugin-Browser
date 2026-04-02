@@ -1,8 +1,10 @@
 from PyQt6.QtWidgets import QFrame, QVBoxLayout, QLabel, QLineEdit, QPushButton, QListWidget # type: ignore
+from PyQt6.QtCore import QTimer # type: ignore
 
 class Sidebar(QFrame):
-    def __init__(self, on_search, on_reset, on_category, parent=None):
+    def __init__(self, on_search, on_reset, on_category, on_check_for_updates, parent=None):
         super().__init__(parent)
+        self.on_check_for_updates = on_check_for_updates
         self.setFixedWidth(200)
         self.setStyleSheet("""
             Sidebar { 
@@ -69,3 +71,16 @@ class Sidebar(QFrame):
         self.category_list.itemClicked.connect(on_category)
         layout.addWidget(self.category_list)
         layout.addStretch()
+        self.update_check_btn = QPushButton("Check for Updates")
+        self.update_check_btn.clicked.connect(self.handle_update_check_press)
+        layout.addWidget(self.update_check_btn)
+
+    def handle_update_check_press(self):
+        self.update_check_btn.setDisabled(True)
+        update_count: int = self.on_check_for_updates()
+        self.update_check_btn.setText(f"{update_count} updates available")
+        QTimer.singleShot(60000, self.reset_update_button)
+
+    def reset_update_button(self):
+        self.update_check_btn.setDisabled(False)
+        self.update_check_btn.setText("Check for updates")

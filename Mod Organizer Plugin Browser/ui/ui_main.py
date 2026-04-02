@@ -18,6 +18,8 @@ from ..nexusmods.nexus_mods_types import ModsResult, ModNode, PluginCategoryType
 from ..utility.managed_plugins import ManagedPlugins
 from .ui_restart_banner import RestartBanner
 from ..utility.plugin_installer import PluginInstaller
+from ..utility.update_checker import UpdateChecker
+from ..messenger import BUS
 
 class BrowserDialog(QDialog):
     def __init__(
@@ -34,6 +36,7 @@ class BrowserDialog(QDialog):
         self.installed_manager = installed_manager
         self.image_manager = ImageManager(self)
         self.plugin_installer = PluginInstaller(organizer, api, installed_manager)
+        self.update_checker = UpdateChecker(api)
         self.current_offset = 0
         self.page_size = 12
         self.load_callback = load_callback
@@ -92,7 +95,8 @@ class BrowserDialog(QDialog):
         self.sidebar = Sidebar(
             on_search=self.on_search_submitted,
             on_reset=self.on_search_reset,
-            on_category=self.on_category_clicked
+            on_category=self.on_category_clicked,
+            on_check_for_updates=self.on_check_for_updates
         )
 
         # Swappable pages to live inside the main_stack
@@ -198,6 +202,23 @@ class BrowserDialog(QDialog):
            self.sidebar.category_list.setCurrentItem(self.sidebar.category_list.item(0))
 
         self.trigger_filter_refresh(reset_pagination=True)
+    
+    def on_check_for_updates(self) -> int:
+        update_count = 0
+        plugins = self.installed_manager.get_all()
+        for p in plugins:
+            new_version = self.update_checker.check_plugin_for_update(p)
+            if not new_version: continue
+            uid = p["uid"]
+            self.installed_manager.set_update_available(
+                uid, 
+                version=new_version["file"]["version"],
+                file_id=int(new_version["file"]["game_scoped_id"])
+            )
+            BUS.update_available.emit(uid, new_version, p)
+            update_count += 1
+        return update_count
+
     
     def load_next_page(self):
         self.current_offset += self.page_size

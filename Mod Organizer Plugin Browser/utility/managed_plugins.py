@@ -1,26 +1,18 @@
 import json
 import logging
-import mobase # type: ignore
 from pathlib import Path
-from typing import TypedDict, Iterable, Dict, Optional, List, NotRequired
+from typing import Iterable, Dict
 from PyQt6.QtCore import QCoreApplication, QObject, pyqtSignal, QThread # type: ignore
 from ..nexusmods_api import NexusModsAPI
-
-class ManagedPlugin(TypedDict):
-    uid: str
-    name: str
-    mod_id: int
-    version: str
-    group_id: int
-    files: Optional[List[str]]
-    latest_version: NotRequired[str]
-    latest_file_id: NotRequired[int]
+from ..utility.update_checker import UpdateChecker
+from ..constants import VERSION
+from .plugin_types import ManagedPlugin
 
 this_plugin: ManagedPlugin = {
     "uid": "9856949946062",
     "name": "Plugin Browser for Mod Organizer 2",
     "mod_id": 1742,
-    "version": mobase.VersionInfo(1, 0, 0, mobase.ReleaseType.CANDIDATE).displayString(),
+    "version": VERSION.displayString(),
     "group_id": 7243541,
     "files": None
 }
@@ -134,6 +126,7 @@ class UpdateWorker(QObject):
         super().__init__()
         self.api = api
         self.manager = manager
+        self.update_checker = UpdateChecker(api)
 
     def run(self):
         """The main loop that runs inside the QThread."""
@@ -146,34 +139,15 @@ class UpdateWorker(QObject):
             version = plugin["version"]
 
             try:
-                # 1. Fetch files from Nexus
-                resp = self.api.get_mod_files(mod_id)
-                if not resp or "modFiles" not in resp:
-                    self.manager.logger.info(f"No update for {plugin['name']} ({plugin["version"]}) - No files on mod page")
-                    continue 
-
-                # 2. Filter by group and sort by newest timestamp
-                group_files = [f for f in resp["modFiles"] if f.get("groupId") == group_id]
-                if not group_files:
-                    self.manager.logger.info(f"No update for {plugin['name']} ({plugin["version"]}) - No files in group {group_id}")
-                    continue
-
-                latest = sorted(group_files, key=lambda x: x.get("date", 0), reverse=True)[0]
-                
-                # 3. Compare timestamps
-                if latest.get("version") != version:
-                    self.manager.logger.info(f"Found update on {plugin['name']}")
-                    # Update local data and notify UI
+                # Get all files in the group
+                latest_file = self.update_checker.check_plugin_for_update(plugin=plugin)
+                if latest_file: 
                     self.manager.set_update_available(
                         uid, 
-                        latest["version"], 
-                        latest["fileId"]
+                        version=latest_file["file"]["version"],
+                        file_id=int(latest_file["file"]["game_scoped_id"])
                     )
-                    self.update_found.emit(uid, latest, plugin)
-                else: self.manager.logger.info(f"No update for {plugin['name']} ({plugin["version"]})")
-
+                    self.update_found.emit(uid, latest_file, plugin)
             except Exception as e:
                 self.manager.logger.warning(f"Update check failed for {plugin['name']}: {e}")
-                
-
         self.finished.emit()

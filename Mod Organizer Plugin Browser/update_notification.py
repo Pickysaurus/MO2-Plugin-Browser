@@ -4,6 +4,7 @@ import mobase # type: ignore
 from .constants import UPDATE_PLUGIN_NAME, VERSION, AUTHOR
 from .messenger import BUS
 from .utility.managed_plugins import ManagedPlugin
+from .nexusmods.nexus_mods_types import NexusModsFilesInGroup, ModFilesResult
 
 LOGGER = logging.getLogger("MO2PluginBrowserUpdateNotice")
 
@@ -52,8 +53,14 @@ class PluginBrowserUpdates(mobase.IPluginDiagnose):
 
     # Custom code
     
-    def _on_update_found(self, uid: str, latest_file, managed_plugin):
-        LOGGER.info(f"Plugin Update notice update found {uid}: {managed_plugin['name']} {managed_plugin['version']} -> {latest_file['version']}")
+    def _on_update_found(self, uid: str, latest_file: NexusModsFilesInGroup | ModFilesResult, managed_plugin: ManagedPlugin):
+        if latest_file.get("version") is not None:
+            assert latest_file is ModFilesResult
+            LOGGER.info(f"MO2 Plugin Update found new version of {managed_plugin['name']} {managed_plugin['version']} -> {latest_file['version']}")
+        elif latest_file.get("file") is not None:
+            assert latest_file is NexusModsFilesInGroup
+            LOGGER.info(f"MO2 Plugin Update found new version of {managed_plugin['name']} {managed_plugin['version']} -> {latest_file['file']['version']}")
+
         if uid not in self.__outdated_plugins:
             self.__outdated_plugins[uid] = managed_plugin
 
