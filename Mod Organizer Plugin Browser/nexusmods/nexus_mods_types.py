@@ -77,7 +77,7 @@ class GroupFile(TypedDict):
     name: str
     version: str
     category: str
-    upload_at: str
+    uploaded_at: str
 
 class NexusModsFilesInGroup(TypedDict):
     id: str
