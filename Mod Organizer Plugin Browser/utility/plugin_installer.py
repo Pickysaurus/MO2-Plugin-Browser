@@ -10,7 +10,7 @@ from typing import List, Literal, Optional
 from PyQt6.QtCore import QObject, pyqtSignal, QCoreApplication # type: ignore
 from ..messenger import BUS
 from ..nexusmods_api import NexusModsAPI
-from .managed_plugins import ManagedPlugins
+from .managed_plugins import ManagedPlugins, ManagedPlugin
 from ..nexusmods.nexus_mods_types import ModFilesResult, ModNode
 from ..nexusmods.nexus_mods_errors import NexusModsAPIKeyMissingError
 
@@ -133,7 +133,6 @@ class PluginInstaller(QObject):
         if staging_path.exists():
             shutil.rmtree(staging_path) # Clean up old failed attempts
         staging_path.mkdir(parents=True, exist_ok=True)
-        LOGGER.info(f"Temporary update staging at {str(staging_path)}")
         return str(staging_path)
 
     def _finish_installation(self, archive_path: str, mod_node: ModNode, metadata, type: Literal['install', 'update']):
@@ -155,24 +154,37 @@ class PluginInstaller(QObject):
             file_list: List[str] = []
             
             if type == 'install':
-                for item in os.listdir(source):
-                    s, d = os.path.join(source, item), os.path.join(plugins_path, item)
-                    if os.path.isdir(s):
-                        if os.path.exists(d): shutil.rmtree(d)
-                        shutil.copytree(s, d)
-                        file_list.append(d)
-                    else:
-                        shutil.copy2(s, d)
-                        file_list.append(d)
-
-                self.installed_manager.add_managed_plugin({
+                new_plugin: ManagedPlugin = {
                     "uid": mod_node.get("uid"),
                     "mod_id": mod_node.get("modId"),
                     "version": metadata["version"],
                     "name": metadata["name"],
                     "group_id": metadata["groupId"],
                     "files": file_list
-                })
+                }
+
+                try:
+                    for item in os.listdir(source):
+                        s, d = os.path.join(source, item), os.path.join(plugins_path, item)
+                        if os.path.isdir(s):
+                            if os.path.exists(d): shutil.rmtree(d)
+                            shutil.copytree(s, d)
+                            file_list.append(d)
+                        else:
+                            shutil.copy2(s, d)
+                            file_list.append(d)
+                except PermissionError as e:
+                    # Sometimes, if the plugin tries to replace files that MO2 is currently using, the process will fail.
+                    LOGGER.warning(f"Permission error on install: {e.strerror}. Scheduling update instead")
+                    self.installed_manager.add_managed_plugin(new_plugin) # Add the plugin so the update path will work.
+                    return self._finish_installation(archive_path, mod_node, metadata, 'update')
+                except FileNotFoundError as e:
+                    LOGGER.error(f"File not found: {e.strerror}")
+                except OSError as e:
+                    LOGGER.error(f"Unexpected file system error: {e.strerror}")
+
+                new_plugin["files"] = file_list
+                self.installed_manager.add_managed_plugin(new_plugin)
             elif type == 'update':
                 LOGGER.info("Updating existing plugin")
                 current = self.installed_manager.get_managed_plugin(mod_node.get("uid"))
