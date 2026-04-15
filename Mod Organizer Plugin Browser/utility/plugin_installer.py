@@ -4,6 +4,7 @@ import subprocess
 import shutil
 import tempfile
 import logging
+from pathlib import Path
 import mobase # type: ignore
 from typing import List, Literal, Optional
 from PyQt6.QtCore import QObject, pyqtSignal, QCoreApplication # type: ignore
@@ -125,56 +126,70 @@ class PluginInstaller(QObject):
         data = self._active_downloads.pop(download_id)
         archive_path = self._organizer.downloadManager().downloadPath(download_id)
         self._finish_installation(archive_path, data["mod"], data["metadata"], data["type"])
+    
+    def _get_update_staging_dir(self) -> str:
+        """Creates a persistent staging area for updates that survives MO2 restart."""
+        staging_path = Path(QCoreApplication.applicationDirPath()) / "web_cache" / "plugin_browser_updates"
+        if staging_path.exists():
+            shutil.rmtree(staging_path) # Clean up old failed attempts
+        staging_path.mkdir(parents=True, exist_ok=True)
+        LOGGER.info(f"Temporary update staging at {str(staging_path)}")
+        return str(staging_path)
 
     def _finish_installation(self, archive_path: str, mod_node: ModNode, metadata, type: Literal['install', 'update']):
         """Shared logic for both local and newly downloaded files."""
         try:
-            with tempfile.TemporaryDirectory() as tmp_dir:
-                # --- EDGE CASE 2: Handle 7z/RAR/ZIP ---
-                self._extract_archive(archive_path, tmp_dir)
+            if type == 'install':
+                tmp_dir_context = tempfile.TemporaryDirectory()
+                staging_dir = tmp_dir_context.name
+            else:
+                staging_dir = self._get_update_staging_dir()
 
-                # Move files logic
-                plugins_path = os.path.join(QCoreApplication.applicationDirPath(), "plugins")
-                source = os.path.join(tmp_dir, "plugins") if os.path.exists(os.path.join(tmp_dir, "plugins")) else tmp_dir
+            # --- EDGE CASE 2: Handle 7z/RAR/ZIP ---
+            self._extract_archive(archive_path, staging_dir)
 
-                file_list: List[str] = []
-                
-                if type == 'install':
-                    for item in os.listdir(source):
-                        s, d = os.path.join(source, item), os.path.join(plugins_path, item)
-                        if os.path.isdir(s):
-                            if os.path.exists(d): shutil.rmtree(d)
-                            shutil.copytree(s, d)
-                            file_list.append(d)
-                        else:
-                            shutil.copy2(s, d)
-                            file_list.append(d)
+            # Move files logic
+            plugins_path = os.path.join(QCoreApplication.applicationDirPath(), "plugins")
+            source = os.path.join(staging_dir, "plugins") if os.path.exists(os.path.join(staging_dir, "plugins")) else staging_dir
 
-                    self.installed_manager.add_managed_plugin({
-                        "uid": mod_node.get("uid"),
-                        "mod_id": mod_node.get("modId"),
-                        "version": metadata["version"],
-                        "name": metadata["name"],
-                        "group_id": metadata["groupId"],
-                        "files": file_list
-                    })
-                elif type == 'update':
-                    LOGGER.info("Updating existing plugin")
-                    current = self.installed_manager.get_managed_plugin(mod_node.get("uid"))
-                    if not current: raise Exception(f"Could not update {mod_node.get("name", "Unknown plugin")} as it is not managed")
-                    for file in current["files"] if current["files"] else []:
-                        BUS.queue_delete_on_restart_op.emit(file)
-                    
-                    for item in os.listdir(source):
-                        s, d = os.path.join(source, item), os.path.join(plugins_path, item)
-                        BUS.queue_move_on_restart_op.emit(s, d)
+            file_list: List[str] = []
+            
+            if type == 'install':
+                for item in os.listdir(source):
+                    s, d = os.path.join(source, item), os.path.join(plugins_path, item)
+                    if os.path.isdir(s):
+                        if os.path.exists(d): shutil.rmtree(d)
+                        shutil.copytree(s, d)
+                        file_list.append(d)
+                    else:
+                        shutil.copy2(s, d)
                         file_list.append(d)
 
-                    del current["latest_file_id"]
-                    del current["latest_version"]
-                    current["version"] = metadata["version"]
-                    current["files"] = file_list
-                    self.installed_manager.add_managed_plugin(current)
+                self.installed_manager.add_managed_plugin({
+                    "uid": mod_node.get("uid"),
+                    "mod_id": mod_node.get("modId"),
+                    "version": metadata["version"],
+                    "name": metadata["name"],
+                    "group_id": metadata["groupId"],
+                    "files": file_list
+                })
+            elif type == 'update':
+                LOGGER.info("Updating existing plugin")
+                current = self.installed_manager.get_managed_plugin(mod_node.get("uid"))
+                if not current: raise Exception(f"Could not update {mod_node.get("name", "Unknown plugin")} as it is not managed")
+                for file in current["files"] if current["files"] else []:
+                    BUS.queue_delete_on_restart_op.emit(file)
+                
+                for item in os.listdir(source):
+                    s, d = os.path.join(source, item), os.path.join(plugins_path, item)
+                    BUS.queue_move_on_restart_op.emit(s, d)
+                    file_list.append(d)
+
+                del current["latest_file_id"]
+                del current["latest_version"]
+                current["version"] = metadata["version"]
+                current["files"] = file_list
+                self.installed_manager.add_managed_plugin(current)
 
                     
                 
@@ -188,7 +203,7 @@ class PluginInstaller(QObject):
         """Universal extractor supporting ZIP, 7Z, and RAR."""
         ext = os.path.splitext(archive_path)[1].lower()
         
-        if ext == ".zip":
+        if ext == ".zip" or not ext:
             with zipfile.ZipFile(archive_path, 'r') as zip_ref:
                 zip_ref.extractall(dest_dir)
         else:

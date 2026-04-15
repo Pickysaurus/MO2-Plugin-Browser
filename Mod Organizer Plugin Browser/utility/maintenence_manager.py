@@ -24,7 +24,12 @@ class MaintenanceManager:
         """Queues a file or directory to be moved/overwritten."""
         src_path = Path(src)
         dst_path = Path(dst)
-        self._task_queue.append({'type': 'move', 'src': str(src_path), 'dst': str(dst_path)})
+        self._task_queue.append({
+            'type': 'move', 
+            'src': str(src_path), 
+            'dst': str(dst_path),
+            'is_dir': src_path.is_dir()
+        })
         LOGGER.info(f"Queued for move: {src_path.name} -> {dst_path.name}")
 
     def has_tasks(self) -> bool:
@@ -63,7 +68,11 @@ class MaintenanceManager:
                 s, d = task['src'], task['dst']
                 # Ensure destination is clear before moving
                 lines.append(f'if exist "{d}" (rd /s /q "{d}" 2>nul || del /f /q "{d}" 2>nul)')
-                lines.append(f'move /y "{s}" "{d}"')
+                if task["is_dir"]:
+                    lines.append(f'robocopy "{s}" "{d}" /mir /r:0 /w:0')
+                    lines.append(f'if exist "{s}" rd /s /q "{s}"')
+                else:
+                    lines.append(f'move /y "{s}" "{d}"')
 
         lines.append(f'start "" "{mo_exe}"')
         lines.append(f'del "{script_path}"')
