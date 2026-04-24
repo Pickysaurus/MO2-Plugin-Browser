@@ -5,7 +5,7 @@ class SignalBus(QObject):
     relaunch_mo2 = pyqtSignal()
     queue_delete_on_restart_op = pyqtSignal(str)
     queue_move_on_restart_op = pyqtSignal(str, str)
-    error_occurred = pyqtSignal(str, str, object)
+    error_occurred = pyqtSignal(str, str, object) # Title, detail, exception
     focus_plugin_browser = pyqtSignal()
     update_available = pyqtSignal(str, object, object)
     update_installed = pyqtSignal(str)

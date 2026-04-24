@@ -306,6 +306,7 @@ class DetailView(QWidget):
         self.endorse_btn.setEnabled(True)
 
     def _on_download_started(self, dl_id):
+        self.download_btn.setText("DOWNLOADING...")
         self.download_btn.setEnabled(False)
 
     def _on_install_finished(self, uid):
@@ -322,7 +323,9 @@ class DetailView(QWidget):
                 return None
         LOGGER.error(f"Error downloading mod: {message}, {str(e)}");
         self.download_btn.setEnabled(True)
+        self.download_btn.setText("DOWNLOAD")
         self.download_btn.setVisible(True)
+        BUS.error_occurred.emit(message, str(e), e)
 
     def set_button_enabled(self, button: QPushButton, enabled: bool = True):
         opacity = 0.7 if not enabled else 1

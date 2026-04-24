@@ -22,7 +22,7 @@ class PluginInstaller(QObject):
     install_complete = pyqtSignal(str) # mod_uid
     error_occurred = pyqtSignal(str, object)
 
-    def __init__(self, organizer, api, installed_manager):
+    def __init__(self, organizer: mobase.IOrganizer, api, installed_manager):
         super().__init__()
         self._organizer: mobase.IOrganizer = organizer
         self.api: NexusModsAPI = api
@@ -33,6 +33,8 @@ class PluginInstaller(QObject):
         
         # Connect to MO2's global download signal once
         self._organizer.downloadManager().onDownloadComplete(self._on_mo2_download_finished)
+        self._organizer.downloadManager().onDownloadFailed(self._on_mo2_download_failed)
+        self._organizer.downloadManager().onDownloadRemoved(self._on_mo2_download_removed)
 
     def start_install(self, mod_node: ModNode, type: Literal['install', 'update'], newId: Optional[int]):
         """High-level entry point with local file check, called by the UI."""
@@ -127,6 +129,16 @@ class PluginInstaller(QObject):
         archive_path = self._organizer.downloadManager().downloadPath(download_id)
         self._finish_installation(archive_path, data["mod"], data["metadata"], data["type"])
     
+    def _on_mo2_download_failed(self, download_id):
+        if download_id not in self._active_downloads:
+            return
+        self.error_occurred.emit("Download failed.", Exception("MO2 reported download failure"))
+    
+    def _on_mo2_download_removed(self, download_id):
+        if download_id not in self._active_downloads:
+            return
+        self.error_occurred.emit("Download removed.", Exception("MO2 reported download removed"))
+    
     def _get_update_staging_dir(self) -> str:
         """Creates a persistent staging area for updates that survives MO2 restart."""
         staging_path = Path(QCoreApplication.applicationDirPath()) / "web_cache" / "plugin_browser_updates"
@@ -155,16 +167,7 @@ class PluginInstaller(QObject):
             file_list: List[str] = []
             
             if type == 'install':
-                for item in os.listdir(source):
-                    s, d = os.path.join(source, item), os.path.join(plugins_path, item)
-                    if os.path.isdir(s):
-                        if os.path.exists(d): shutil.rmtree(d)
-                        shutil.copytree(s, d)
-                        file_list.append(d)
-                    else:
-                        shutil.copy2(s, d)
-                        file_list.append(d)
-
+                file_list = self._install_plugin(source, plugins_path)
                 self.installed_manager.add_managed_plugin({
                     "uid": mod_node.get("uid"),
                     "mod_id": mod_node.get("modId"),
@@ -189,16 +192,63 @@ class PluginInstaller(QObject):
                 del current["latest_version"]
                 current["version"] = metadata["version"]
                 current["files"] = file_list
-                self.installed_manager.add_managed_plugin(current)
-
-                    
+                self.installed_manager.add_managed_plugin(current)  
                 
-                BUS.focus_plugin_browser.emit()
-                BUS.relaunch_required.emit(True)
-                self.install_complete.emit(mod_node.get("uid"))
+            BUS.focus_plugin_browser.emit()
+            BUS.relaunch_required.emit(True)
+            self.install_complete.emit(mod_node.get("uid"))
         except Exception as e:
             self.error_occurred.emit(str(e), e)
 
+    def _install_plugin(self, plugin_folder: str, destination: str) -> List[str]:
+        """
+        Merges plugin files into the destination.
+        Skips existing files, and queues locked files for a restart operation.
+        """
+        installed_files: List[str] = []
+
+        # os.walk handles nested directories without needing rmtree
+        for root, dirs, files in os.walk(plugin_folder):
+            # Calculate the corresponding path in the MO2 plugins folder
+            rel_path = os.path.relpath(root, plugin_folder)
+
+            target_dir = os.path.join(destination, rel_path) if rel_path != "." else destination
+
+            # 1. Ensure the sub-directory exists in destination
+            if not os.path.exists(target_dir):
+                try:
+                    os.makedirs(target_dir, exist_ok=True)
+                except PermissionError:
+                    # If we can't even make the directory, queue it for restart
+                    BUS.queue_move_on_restart_op.emit(root, target_dir)
+                    continue
+
+            # 2. Process individual files
+            for file_name in files:
+                s_file = os.path.join(root, file_name)
+                d_file = os.path.join(target_dir, file_name)
+
+                # Requirement: If they already exist, do nothing
+                if os.path.exists(d_file):
+                    LOGGER.debug(f"File already exists, skipping: {file_name}")
+                    installed_files.append(d_file)
+                    continue
+
+                try:
+                    # Attempt immediate copy
+                    shutil.copy2(s_file, d_file)
+                    installed_files.append(d_file)
+                except PermissionError:
+                    # Requirement: Record permission errors to queue for later
+                    LOGGER.info(f"Access denied to {file_name}, queuing for restart.")
+                    # Using the MaintenanceManager bus created earlier
+                    BUS.queue_move_on_restart_op.emit(s_file, d_file)
+                    installed_files.append(d_file)
+                except Exception as e:
+                    LOGGER.error(f"Unexpected error installing {file_name}: {e}")
+
+        return installed_files        
+    
     def _extract_archive(self, archive_path, dest_dir):
         """Universal extractor supporting ZIP, 7Z, and RAR."""
         ext = os.path.splitext(archive_path)[1].lower()

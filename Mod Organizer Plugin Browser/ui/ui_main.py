@@ -17,6 +17,7 @@ from ..nexusmods_api import NexusModsAPI
 from ..nexusmods.nexus_mods_types import ModsResult, ModNode, PluginCategoryType, ModSortType
 from ..utility.managed_plugins import ManagedPlugins
 from .ui_restart_banner import RestartBanner
+from .ui_error_banner import ErrorBanner
 from ..utility.plugin_installer import PluginInstaller
 from ..utility.update_checker import UpdateChecker
 from ..messenger import BUS
@@ -84,11 +85,13 @@ class BrowserDialog(QDialog):
         self.header_text.setWordWrap(True)
 
         # Restart notification
+        self.error_banner = ErrorBanner()
         self.restart_banner = RestartBanner()
 
         # Add the header and body area to the root_layout
         self.root_layout.addWidget(self.header_text)
         self.root_layout.addWidget(self.restart_banner)
+        self.root_layout.addWidget(self.error_banner)
         self.root_layout.addLayout(self.content_layout)
 
         # Sidebar
