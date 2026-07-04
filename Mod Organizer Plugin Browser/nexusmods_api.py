@@ -7,7 +7,7 @@ from .nexusmods.nexus_mods_client import NexusClient
 from .nexusmods.nexus_mods_queries import GET_MO2_EXTENSIONS, GET_MOD_FILES, GET_MODS_BY_UID
 from .nexusmods.nexus_mods_types import (
     NexusExtensionsResponse, NexusModsFileListResponse, NexusModsByUidResponse, PluginCategoryType, ModSortType,
-    NexusModsFilesInGroup
+    NexusModsFilesInGroup, NexusModsV3ModFile
 )
 
 LOGGER = logging.getLogger("MO2PluginsNexusModsAPI")
@@ -124,21 +124,21 @@ class NexusModsAPI(NexusClient):
             return reply_data[0].get("URI")
         return None
     
-    def get_mod_update_groups(self, mod_uid: str):
-        path = f"v3/mods/{mod_uid}/mods/file-update-groups"
-        url = QUrl(f"{self.base_url}/{path}")
+    def get_mod_files_v3(self, mod_uid: str) -> Optional[List[NexusModsV3ModFile]]:
+        path = f"/v3/mods/{mod_uid}/files"
+        url = QUrl(f"{self.base_url}{path}")
 
         # REST call
         reply_data = self.send_request("GET", url, requires_auth=True)
         if not reply_data: return
 
-        groups = reply_data.get("data", {}).get("groups", None)
+        groups = reply_data.get("data", {}).get("mod_files", None)
         
         return groups
     
-    def get_files_in_group(self, group_id: int) -> Optional[list[NexusModsFilesInGroup]]:
-        path = f"/v3/file-update-groups/{group_id}/versions"
-        url = QUrl(f"{self.base_url}/{path}")
+    def get_versions_for_file(self, group_id: int) -> Optional[list[NexusModsFilesInGroup]]:
+        path = f"/v3/mod-files/{group_id}/versions"
+        url = QUrl(f"{self.base_url}{path}")
 
         # REST call
         reply_data = self.send_request("GET", url, requires_auth=True)

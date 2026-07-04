@@ -1,20 +1,23 @@
 import json
 import logging
 from pathlib import Path
-from typing import Iterable, Dict
+from typing import Iterable, Dict, List
 from PyQt6.QtCore import QCoreApplication, QObject, pyqtSignal, QThread # type: ignore
 from ..nexusmods_api import NexusModsAPI
 from ..utility.update_checker import UpdateChecker
 from ..constants import VERSION
-from .plugin_types import ManagedPlugin
+from .plugin_types import ManagedPlugin, ManagedVersion
 
 this_plugin: ManagedPlugin = {
     "uid": "9856949946062",
-    "name": "Plugin Browser for Mod Organizer 2",
-    "mod_id": 1742,
-    "version": VERSION.displayString(),
-    "group_id": 7243541,
-    "files": None
+    # "name": "Plugin Browser for Mod Organizer 2",
+    # "mod_id": 1742,
+    "versions": [{
+        "name": "Plugin Browser for Mod Organizer 2",
+        "version": VERSION.displayString(),
+        "mod_file_id": 7243541,
+        "files": None
+    }],
 }
 
 class ManagedPlugins:
@@ -45,18 +48,21 @@ class ManagedPlugins:
             self.logger.error(f"Failed to load managed plugins: {e}")
             return result
 
-    def add_managed_plugin(self, plugin: ManagedPlugin):
+    def add_managed_plugin(self, mod_uid: str, versions: List[ManagedVersion]):
         """Adds or updates a plugin in the managed list."""
-        uid = plugin.get("uid")
-        self.logger.debug(f"Adding managed plugin ({uid}) {plugin}")
-        if uid:
-            self.managed[uid] = plugin
+        self.logger.debug(f"Adding managed plugin ({mod_uid}) {versions}")
+        if self.managed[mod_uid]:
+            self.managed[mod_uid]["versions"] = versions
+        else:
+            self.managed[mod_uid] = { "uid": mod_uid,"versions": versions }
             self._save_to_disk()
 
-    def remove_managed_plugin(self, uid: str):
-        self.logger.debug(f"Removing managed plugin ({uid})")
-        if uid in self.managed:
-            del self.managed[uid]
+    def remove_managed_plugin(self, mod_uid: str, mod_file_id):
+        self.logger.debug(f"Removing managed plugin ({mod_uid}-{mod_file_id})")
+        mod = self.managed[mod_uid]
+        if mod:
+            mod["versions"] = [v for v in mod["versions"] if v["mod_file_id"] != mod_file_id]
+            if len(mod["versions"]) == 0: del self.managed[mod_uid]
             self._save_to_disk()
 
     def get_managed_plugin(self, uid: str) -> ManagedPlugin | None:
@@ -66,12 +72,33 @@ class ManagedPlugins:
         """Quick check if a mod is currently managed."""
         return uid in self.managed
     
-    def set_update_available(self, uid: str, version: str, file_id: int):
-        self.logger.debug(f"Adding update info to managed plugin ({uid})")
-        if uid in self.managed:
-            self.managed[uid]["latest_file_id"] = file_id
-            self.managed[uid]["latest_version"] = version
-            self._save_to_disk()
+    def is_file_managed(self, file_id: str) -> list[str]:
+        """Check if the mod file ID passed is one of the installed plugins. Returns an array of UIDs."""
+        matches = []
+
+        for plugin in self.managed.values():
+            for version in plugin.get("versions", []):
+                if version["mod_file_id"] == str(file_id):
+                    matches.append(version["mod_file_id"])
+
+        return matches
+    
+    def set_update_available(self, uid: str, mod_file_id: str, version: str, file_id: int):
+        self.logger.debug(f"Adding update info to managed plugin ({uid}-{mod_file_id})")
+        mod = self.managed[uid]
+        if not mod:
+            return
+        
+        updated = False
+
+        for version_entry in mod.get("versions", []):
+            if str(version_entry.get("mod_file_id")) == str(mod_file_id):
+                version_entry["latest_version"] = version
+                version_entry["latest_file_id"] = file_id
+                updated = True
+                break
+        
+        if updated: self._save_to_disk()
 
     def clear_update(self, uid: str):
         self.logger.debug(f"Clearing update info to managed plugin ({uid})")
@@ -132,22 +159,21 @@ class UpdateWorker(QObject):
         """The main loop that runs inside the QThread."""
         self.api.check_thread_affinity()
         for plugin in self.manager.get_all():
-            self.manager.logger.info(f"Checking for update on {plugin['name']}")
-            uid = plugin["uid"]
-            mod_id = plugin["mod_id"]
-            group_id = plugin["group_id"]
-            version = plugin["version"]
+            for version in plugin["versions"]:
+                self.manager.logger.info(f"Checking for update on {version['name']}")
+                uid = plugin["uid"]
 
-            try:
-                # Get all files in the group
-                latest_file = self.update_checker.check_plugin_for_update(plugin=plugin)
-                if latest_file: 
-                    self.manager.set_update_available(
-                        uid, 
-                        version=latest_file["file"]["version"],
-                        file_id=int(latest_file["file"]["game_scoped_id"])
-                    )
-                    self.update_found.emit(uid, latest_file, plugin)
-            except Exception as e:
-                self.manager.logger.warning(f"Update check failed for {plugin['name']}: {e}")
+                try:
+                    # Get all files in the group
+                    latest_file = self.update_checker.check_plugin_for_update(plugin=plugin)
+                    if latest_file: 
+                        self.manager.set_update_available(
+                            uid, 
+                            mod_file_id=latest_file[""]
+                            version=latest_file["version"],
+                            file_id=int(latest_file["id"])
+                        )
+                        self.update_found.emit(uid, latest_file, plugin)
+                except Exception as e:
+                    self.manager.logger.warning(f"Update check failed for {version['name']}: {e}")
         self.finished.emit()

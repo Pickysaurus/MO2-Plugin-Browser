@@ -129,6 +129,7 @@ class BrowserDialog(QDialog):
     def show_details(self, mod_node: ModNode):
         """Populates the detail view and flips the stack."""
         self.detail_view.update_data(mod_node)
+        self.detail_view.load_files_for_mod(mod_node)
         self.main_stack.setCurrentIndex(1)
     
     def set_thumbnail(self, pixmap: QPixmap | None, url: str):
@@ -215,8 +216,8 @@ class BrowserDialog(QDialog):
             uid = p["uid"]
             self.installed_manager.set_update_available(
                 uid, 
-                version=new_version["file"]["version"],
-                file_id=int(new_version["file"]["game_scoped_id"])
+                version=new_version["version"],
+                file_id=int(new_version["file"]["id"])
             )
             BUS.update_available.emit(uid, new_version, p)
             update_count += 1

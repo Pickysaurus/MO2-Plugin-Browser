@@ -1,4 +1,4 @@
-from typing import TypedDict, List, Optional, Literal, Iterable
+from typing import TypedDict, List, Optional, Literal
 
 ModSortType = Literal["Endorsements", "Downloads", "Created At", "Updated At"]
 PluginCategoryType = Literal["All", "Plugins", "Themes", "Installed"]
@@ -53,7 +53,7 @@ class NexusModsByUidResponse(TypedDict):
 
 class ModFilesResult(TypedDict):
     category: str
-    changelogText: Iterable[str]
+    changelogText: list[str]
     date: str
     description: str
     fileId: int
@@ -73,13 +73,30 @@ class NexusModsFileListResponse(TypedDict):
 
 class GroupFile(TypedDict):
     id: str
-    game_scoped_id: str
     name: str
-    version: str
-    category: str
-    uploaded_at: str
 
 class NexusModsFilesInGroup(TypedDict):
     id: str
     position: str
+    name: str
     file: GroupFile
+    game_scoped_id: str
+    version: str
+    category: Literal["main", "old_version", "archived", "update"]
+    uploaded_at: str
+
+class NexusModsV3ModFile(TypedDict):
+    id: str
+    name: str
+    is_active: bool
+    last_file_uploaded_at: str
+    versions_count: int
+    archived_count: int
+    removed_count: int
+    versions: Optional[list[ModFilesResult]] # Added later
+
+class NexusModsV3ModFiles(TypedDict):
+    mod_files: List[NexusModsV3ModFile]
+
+class NexusModsV3ModFilesResponse(TypedDict):
+    data: NexusModsV3ModFiles

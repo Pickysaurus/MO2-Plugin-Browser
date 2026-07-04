@@ -148,7 +148,7 @@ class PluginInstaller(QObject):
         LOGGER.info(f"Temporary update staging at {str(staging_path)}")
         return str(staging_path)
 
-    def _finish_installation(self, archive_path: str, mod_node: ModNode, metadata, type: Literal['install', 'update']):
+    def _finish_installation(self, archive_path: str, mod_node: ModNode, metadata: ModFilesResult, type: Literal['install', 'update']):
         """Shared logic for both local and newly downloaded files."""
         try:
             if type == 'install':
@@ -160,39 +160,58 @@ class PluginInstaller(QObject):
             # --- EDGE CASE 2: Handle 7z/RAR/ZIP ---
             self._extract_archive(archive_path, staging_dir)
 
+
             # Move files logic
             plugins_path = os.path.join(QCoreApplication.applicationDirPath(), "plugins")
             source = os.path.join(staging_dir, "plugins") if os.path.exists(os.path.join(staging_dir, "plugins")) else staging_dir
+
+            # Check if it's a theme and change the path
+            if mod_node['modCategory']["name"] == "Mod Organizer 2 Themes":
+                LOGGER.info("Identified plugin as theme, changing destination path")
+                plugins_path = os.path.join(QCoreApplication.applicationDirPath(), "stylesheets")
+                if os.path.exists(os.path.join(source, "stylesheets")):
+                    source = os.path.join(source, "stylesheets");
 
             file_list: List[str] = []
             
             if type == 'install':
                 file_list = self._install_plugin(source, plugins_path)
-                self.installed_manager.add_managed_plugin({
-                    "uid": mod_node.get("uid"),
-                    "mod_id": mod_node.get("modId"),
-                    "version": metadata["version"],
-                    "name": metadata["name"],
-                    "group_id": metadata["groupId"],
-                    "files": file_list
-                })
+                self.installed_manager.add_managed_plugin(mod_node.get("uid"), [
+                        { 
+                            "name": metadata["name"],
+                            "version": metadata["version"], 
+                            "file_uid": metadata["uid"],
+                            "mod_file_id": int(metadata["groupId"]),
+                            "files": file_list
+                        }
+                    ]
+                )
             elif type == 'update':
                 LOGGER.info("Updating existing plugin")
-                current = self.installed_manager.get_managed_plugin(mod_node.get("uid"))
-                if not current: raise Exception(f"Could not update {mod_node.get("name", "Unknown plugin")} as it is not managed")
-                for file in current["files"] if current["files"] else []:
-                    BUS.queue_delete_on_restart_op.emit(file)
+                currentMod = self.installed_manager.get_managed_plugin(mod_node.get("uid"))
+                if not currentMod: raise Exception(f"Could not update {mod_node.get("name", "Unknown plugin")} as it is not managed")
+                installed_files = currentMod.get("versions", []);
+                current_versions = [v for v in installed_files if v["mod_file_id"] == metadata["groupId"]]
+                for version in current_versions:
+                    for file in version["files"] if version["files"] else []:
+                        BUS.queue_delete_on_restart_op.emit(file)
                 
                 for item in os.listdir(source):
                     s, d = os.path.join(source, item), os.path.join(plugins_path, item)
                     BUS.queue_move_on_restart_op.emit(s, d)
                     file_list.append(d)
 
-                del current["latest_file_id"]
-                del current["latest_version"]
-                current["version"] = metadata["version"]
-                current["files"] = file_list
-                self.installed_manager.add_managed_plugin(current)  
+                del currentMod["latest_file_id"]
+                del currentMod["latest_version"]
+                filtered = [v for v in installed_files if v["mod_file_id"] != metadata["groupId"]]
+                filtered.append({ 
+                    "name": metadata["name"],
+                    "version": metadata["version"], 
+                    "mod_file_id": int(metadata["groupId"]), 
+                    "file_uid": metadata["uid"],
+                    "files": file_list
+                })
+                self.installed_manager.add_managed_plugin(currentMod["uid"], filtered)  
                 
             BUS.focus_plugin_browser.emit()
             BUS.relaunch_required.emit(True)
@@ -218,6 +237,7 @@ class PluginInstaller(QObject):
             if not os.path.exists(target_dir):
                 try:
                     os.makedirs(target_dir, exist_ok=True)
+                    installed_files.append(target_dir)
                 except PermissionError:
                     # If we can't even make the directory, queue it for restart
                     BUS.queue_move_on_restart_op.emit(root, target_dir)
@@ -253,18 +273,43 @@ class PluginInstaller(QObject):
         """Universal extractor supporting ZIP, 7Z, and RAR."""
         ext = os.path.splitext(archive_path)[1].lower()
         
-        if ext == ".zip" or not ext:
+        archive_type = self._detect_archive_type(archive_path)
+
+        if archive_type == ".zip":
             with zipfile.ZipFile(archive_path, 'r') as zip_ref:
                 zip_ref.extractall(dest_dir)
-        else:
-            # For 7z and RAR, we use the 7z.exe bundled with MO2 or the system
-            seven_zip_path = self._find_7z_executable()
-            if not seven_zip_path:
-                raise Exception("Could not find 7z.exe to extract non-ZIP archive.")
-            
-            # 'x' means extract with full paths, '-y' means assume yes to all prompts
-            cmd = [seven_zip_path, "x", archive_path, f"-o{dest_dir}", "-y"]
-            subprocess.run(cmd, check=True, creationflags=subprocess.CREATE_NO_WINDOW)
+            return
+
+        # For 7z and RAR, we use the 7z.exe bundled with MO2 or the system
+        seven_zip_path = self._find_7z_executable()
+        if not seven_zip_path:
+            raise Exception("Could not find 7z.exe to extract non-ZIP archive.")
+        
+        # 'x' means extract with full paths, '-y' means assume yes to all prompts
+        cmd = [seven_zip_path, "x", archive_path, f"-o{dest_dir}", "-y"]
+        subprocess.run(cmd, check=True, creationflags=subprocess.CREATE_NO_WINDOW)
+
+    def _detect_archive_type(self, archive_path: str) -> str:
+        with open(archive_path, "rb") as fh:
+            header = fh.read(16)
+
+        if header.startswith(b"PK\x03\x04"):
+            return "zip"
+        if header.startswith(b"Rar!"):
+            return "rar"
+        if header.startswith(b"\x37\x7A\xBC\xAF\x27\x1C"):
+            return "7z"
+
+        # Fallback to extension if the signature is missing or unclear
+        ext = os.path.splitext(archive_path)[1].lower()
+        if ext == ".zip":
+            return "zip"
+        if ext == ".rar":
+            return "rar"
+        if ext == ".7z":
+            return "7z"
+
+        raise Exception("Unsupported or unrecognized archive format")
 
     def _find_7z_executable(self):
         """Search for 7z.exe in MO2 folder and common paths."""

@@ -1,13 +1,15 @@
 import logging
+from typing import Optional
 from mobase import IOrganizer # type: ignore
 from PyQt6.QtWidgets import ( # type: ignore
     QDialog, QWidget, QVBoxLayout, QPushButton, QScrollArea, QLabel, QFrame, QHBoxLayout,
     QGraphicsOpacityEffect
 )
-from PyQt6.QtCore import Qt, QUrl # type: ignore
+from PyQt6.QtCore import Qt, QUrl, QThread # type: ignore
 from PyQt6.QtGui import QPixmap, QDesktopServices # type: ignore
 
-from ..nexusmods.nexus_mods_types import ModNode
+from ..ui.ui_file_card import FileCard
+from ..nexusmods.nexus_mods_types import ModNode, NexusModsV3ModFile
 from ..nexusmods_api import NexusModsAPI
 from ..nexusmods.nexus_mods_errors import NexusModsAPIKeyMissingError
 from ..utility.image_loader import ImageManager
@@ -16,6 +18,7 @@ from ..utility.plugin_installer import PluginInstaller
 from .ui_api_key_entry import APIKeyEntry
 from ..messenger import BUS
 from ..utility.update_checker import UpdateChecker
+from ..utility.detail_files_worker import DetailFilesWorker
 
 LOGGER = logging.getLogger("MO2PluginsDetailView")
 
@@ -62,8 +65,9 @@ class DetailView(QWidget):
         self.title = QLabel("Mod Name")
         self.title.setStyleSheet("font-size: 20pt; font-weight: bold;")
 
-        # UID
-        self.uid_label = QLabel("UID: ")
+        # Summary
+        self.summary = QLabel("Summary...")
+        self.summary.setWordWrap(True)
 
         # Top section including image and buttons
         self.top_section = self.setup_top_section()
@@ -85,16 +89,16 @@ class DetailView(QWidget):
         self.uploader_layout.addWidget(uploader_by_label)
         self.uploader_layout.addWidget(self.avatar_label)
         self.uploader_layout.addWidget(self.author_name)
-        
-        # Plugin Summary
-        self.summary = QLabel("Summary...")
-        self.summary.setWordWrap(True)
+
+        # UID
+        self.uid_label = QLabel("UID: ")
 
         self.content_layout.addWidget(self.title)
-        self.content_layout.addWidget(self.uid_label)
+        self.content_layout.addWidget(self.summary)
         self.content_layout.addWidget(self.top_section)
         self.content_layout.addLayout(self.uploader_layout)
-        self.content_layout.addWidget(self.summary)
+        self.content_layout.addWidget(self.setup_files_section())
+        self.content_layout.addWidget(self.uid_label)
         self.content_layout.addStretch()
         
         detail_scroll.setWidget(self.content)
@@ -162,6 +166,50 @@ class DetailView(QWidget):
 
         return top_section
 
+    def setup_files_section(self):
+        files_section = QWidget()
+        files_section.setStyleSheet("background-color: transparent;")
+        files_layout = QVBoxLayout(files_section)
+        files_layout.setContentsMargins(0, 0, 0, 0)
+        files_layout.setSpacing(8)
+
+        self.files_container = QWidget()
+        self.files_container.setStyleSheet("background-color: transparent;")
+        self.file_list = QVBoxLayout(self.files_container)
+        self.file_list.setContentsMargins(0, 0, 0, 0)
+        self.file_list.setSpacing(8)
+        self.file_list.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
+        files_layout.addWidget(self.files_container)
+
+        return files_section
+
+    def clear_files_section(self):
+        while self.file_list.count():
+            item = self.file_list.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
+
+    def populate_files_section(self, files: list[NexusModsV3ModFile] | None = None):
+        self.clear_files_section()
+
+        if not files:
+            placeholder = QLabel("No files available")
+            placeholder.setStyleSheet("color: palette(midlight);")
+            self.file_list.addWidget(placeholder)
+            return
+
+        for file in files:
+            card = FileCard(
+                file, 
+                handle_download=self.handle_download_clicked, 
+                handle_update=self.handle_update_clicked,
+                has_installed=self.installed_manager.is_file_managed(file["id"])
+            )
+            # self.installer.download_started.connect(card._on_install)
+            self.installer.install_complete.connect(card._on_install_finished)
+            self.installer.error_occurred.connect(card._on_install_failed)
+            self.file_list.addWidget(card)
 
     def update_data(self, mod_node: ModNode):
         self.mod_node = mod_node
@@ -169,7 +217,7 @@ class DetailView(QWidget):
             self.nexus_mods_btn.setEnabled(True)
         uid = mod_node["uid"]
         self.title.setText(mod_node.get('name', 'Unknown'))
-        self.uid_label.setText(f"UID: {mod_node.get("uid", "UID Not Available")}")
+        self.uid_label.setText(f"UID: {mod_node.get('uid', 'UID Not Available')}")
         self.summary.setText(mod_node.get('summary', 'No summary available.'))
         self.download_btn.setEnabled(True)
         uploader = mod_node.get("uploader", {})
@@ -192,6 +240,8 @@ class DetailView(QWidget):
         author_avatar = uploader.get("avatar", None)
         if author_avatar:
             self.image_manager.fetch(author_avatar, self._set_avatar, True)
+
+        self.populate_files_section(mod_node.get("files") or [])
         
         if self.installed_manager.is_managed(str(uid)):
             installed_data = self.installed_manager.get_managed_plugin(str(uid))
@@ -201,7 +251,7 @@ class DetailView(QWidget):
                 if installed_data.get("latest_version") is not None:
                     self.update_btn.setEnabled(True)
                     self.update_btn.setVisible(True)
-                    self.update_btn.setText(f"UPDATE (v{installed_data.get("latest_version")})")
+                    self.update_btn.setText(f"UPDATE (v{installed_data.get('latest_version')})")
             self.download_btn.setDisabled(True)
             self.endorse_btn.setVisible(True)
             if mod_node["viewerEndorsed"] == True:
@@ -214,6 +264,7 @@ class DetailView(QWidget):
             self.update_btn.setVisible(False)
             self.endorse_btn.setVisible(False)
             self.endorse_btn.setEnabled(True)
+            self.populate_files_section([])
 
     def _set_image(self, pixmap: QPixmap | None, url: str):
         if pixmap and not self.isHidden():
@@ -231,6 +282,40 @@ class DetailView(QWidget):
                 Qt.TransformationMode.SmoothTransformation
             ))
     
+    def load_files_for_mod(self, mod_node: ModNode): 
+        self.mod_node = mod_node
+        self.clear_files_section()
+
+        # Set loading state
+        loading_label = QLabel("Loading file data...")
+        loading_label.setStyleSheet("color: palette(midlight);")
+        self.file_list.addWidget(loading_label)
+
+        # Start the worker
+        self._file_loader_thread = QThread(self)
+        self._file_loader = DetailFilesWorker(self.api, mod_node)
+
+        self._file_loader.moveToThread(self._file_loader_thread)
+        self._file_loader_thread.started.connect(self._file_loader.run)
+        self._file_loader.files_loaded.connect(self._on_files_loaded)
+        self._file_loader.error.connect(self._on_file_load_error)
+        self._file_loader.finished.connect(self._file_loader_thread.quit)
+        self._file_loader.finished.connect(self._file_loader.deleteLater)
+        self._file_loader_thread.finished.connect(self._file_loader_thread.deleteLater)
+
+        self._file_loader_thread.start()
+
+    def _on_files_loaded(self, files: list[NexusModsV3ModFile]):
+        self.populate_files_section(files)
+
+    def _on_file_load_error(self, message: str):
+        self.clear_files_section()
+        LOGGER.warning(f"Got error: {message}")
+        error_label = QLabel("Failed to load file groups.")
+        error_label.setStyleSheet("color: palette(link);")
+        self.file_list.addWidget(error_label)
+        BUS.error_occurred.emit(message, message, Exception(message))
+
     def open_mod_page(self):
         if not self.mod_node:
             return
@@ -239,7 +324,7 @@ class DetailView(QWidget):
         url = QUrl(f"https://nexusmods.com/site/mods/{mod_id}")
         QDesktopServices.openUrl(url)
     
-    def handle_download_clicked(self):
+    def handle_download_clicked(self, newId: Optional[int]):
         if not self.mod_node: return
     
         try:
@@ -248,7 +333,7 @@ class DetailView(QWidget):
             api_key_entry = APIKeyEntry(self.api, self.content)
             if api_key_entry.exec() == QDialog.DialogCode.Accepted:
                 LOGGER.debug("API key entry successful")
-                return self.handle_download_clicked()
+                return self.handle_download_clicked(newId)
             else:
                 LOGGER.warning("User did not provide API key, download cancelled")
                 return None
@@ -265,7 +350,7 @@ class DetailView(QWidget):
             api_key_entry = APIKeyEntry(self.api, self.content)
             if api_key_entry.exec() == QDialog.DialogCode.Accepted:
                 LOGGER.debug("API key entry successful")
-                return self.handle_download_clicked()
+                return self.handle_download_clicked(newId)
             else:
                 LOGGER.warning("User did not provide API key, download cancelled")
                 return None
@@ -301,7 +386,7 @@ class DetailView(QWidget):
                 self.endorse_btn.setText("✅ ENDORSED")
                 self.mod_node["viewerEndorsed"] = True
         else:
-            LOGGER.warning(f"Failed to endorse {self.mod_node["name"]}")
+            LOGGER.warning(f"Failed to endorse {self.mod_node['name']}")
             
         self.endorse_btn.setEnabled(True)
 
@@ -317,7 +402,7 @@ class DetailView(QWidget):
             api_key_entry = APIKeyEntry(self.api, self.content)
             if api_key_entry.exec() == QDialog.DialogCode.Accepted:
                 LOGGER.debug("API key entry successful")
-                return self.handle_download_clicked()
+                return self.handle_download_clicked(None)
             else:
                 LOGGER.warning("User did not provide API key, download cancelled")
                 return None

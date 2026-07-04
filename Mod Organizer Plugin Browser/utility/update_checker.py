@@ -19,16 +19,16 @@ class UpdateChecker:
         version = plugin['version']
 
         try:
-            grouped_files = self.api.get_files_in_group(group_id)
+            grouped_files = self.api.get_versions_for_file(group_id)
             if not grouped_files:
                 LOGGER.warning(f"No grouped files found for {plugin['name']}")
                 return None
-            filtered = [f for f in grouped_files if f["file"]["category"] == "main"]
+            filtered = [f for f in grouped_files if f["category"] == "main"]
             filtered.sort(key=lambda x: float(x.get("position", "999.0")))
             LOGGER.debug(f"Update filtered files result {filtered}") 
             if filtered:
                 latest_file = filtered[0]
-                latest_version = latest_file["file"]["version"]
+                latest_version = latest_file["version"]
                 is_update = compare_versions(latest_version, version)
                 if is_update == 1:
                     LOGGER.info(f"Found update on {plugin['name']}")
