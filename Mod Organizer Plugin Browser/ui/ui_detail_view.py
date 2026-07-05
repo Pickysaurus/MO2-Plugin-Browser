@@ -206,7 +206,7 @@ class DetailView(QWidget):
                 handle_update=self.handle_update_clicked,
                 has_installed=self.installed_manager.is_file_managed(file["id"])
             )
-            # self.installer.download_started.connect(card._on_install)
+            # self.installer.download_started.connect(card._on_install) # Disabled as it duplicated events on click
             self.installer.install_complete.connect(card._on_install_finished)
             self.installer.error_occurred.connect(card._on_install_failed)
             self.file_list.addWidget(card)
@@ -246,8 +246,9 @@ class DetailView(QWidget):
         if self.installed_manager.is_managed(str(uid)):
             installed_data = self.installed_manager.get_managed_plugin(str(uid))
             if installed_data is not None:
-                version_installed = installed_data.get("version", "Unknown")
-                self.download_btn.setText(f"INSTALLED (v {version_installed})")
+                versions_installed = installed_data.get("versions", [])
+                installed = list(versions_installed.values())[0].get("version", "Unknown")
+                self.download_btn.setText(f"INSTALLED (v {installed})")
                 if installed_data.get("latest_version") is not None:
                     self.update_btn.setEnabled(True)
                     self.update_btn.setVisible(True)
@@ -338,11 +339,11 @@ class DetailView(QWidget):
                 LOGGER.warning("User did not provide API key, download cancelled")
                 return None
             
-    def handle_update_clicked(self):
+    def handle_update_clicked(self, new_id: Optional[int]):
         if not self.mod_node: return
 
         plugin = self.installed_manager.get_managed_plugin(self.mod_node.get("uid"))
-        newId = plugin.get("latest_file_id", None) if plugin else None
+        newId = new_id or plugin.get("latest_file_id", None) if plugin else None
     
         try:
             self.installer.start_install(self.mod_node, "update", newId)
@@ -355,18 +356,25 @@ class DetailView(QWidget):
                 LOGGER.warning("User did not provide API key, download cancelled")
                 return None
     
-    def handle_uninstall_clicked(self):
+    def handle_uninstall_clicked(self, file_uid: Optional[int]):
         if not self.mod_node: return
 
         installed_data = self.installed_manager.get_managed_plugin(self.mod_node["uid"])
-        if not installed_data or not installed_data["files"]: return
+        if not installed_data or not installed_data["versions"]: return
 
-        for file in installed_data["files"]:
-            BUS.queue_delete_on_restart_op.emit(file)
+        versions = list(installed_data["versions"].values())
+        versions_to_remove = [v for v in versions if v.get("file_uid") == file_uid].copy() if file_uid else versions.copy()
+
+        if len(versions_to_remove) == 0: return
+
+        for version in versions_to_remove:
+            LOGGER.info(f"Removing version(s): {version} -({self.mod_node["uid"]} -- {version['mod_file_id']})")
+            self.installed_manager.remove_managed_plugin(self.mod_node["uid"], str(version["mod_file_id"]))
+            for file in version.get("files") or []:
+                BUS.queue_delete_on_restart_op.emit(file)
+            
         
         BUS.relaunch_required.emit(True)
-        
-        self.installed_manager.remove_managed_plugin(installed_data["uid"])
         self.uninstall_btn.setEnabled(False)
 
     def handle_endorse_clicked(self):

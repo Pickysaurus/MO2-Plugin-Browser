@@ -3,13 +3,13 @@ from PyQt6.QtCore import QCoreApplication # type: ignore
 import mobase # type: ignore
 from .constants import UPDATE_PLUGIN_NAME, VERSION, AUTHOR
 from .messenger import BUS
-from .utility.managed_plugins import ManagedPlugin
+from .utility.managed_plugins import ManagedVersion
 from .nexusmods.nexus_mods_types import NexusModsFilesInGroup, ModFilesResult
 
 LOGGER = logging.getLogger("MO2PluginBrowserUpdateNotice")
 
 class PluginBrowserUpdates(mobase.IPluginDiagnose):
-    __outdated_plugins: dict[str, ManagedPlugin] = {}
+    __outdated_plugins: dict[str, ManagedVersion] = {}
     __organizer: mobase.IOrganizer
     __problem_id: int = 0
 
@@ -40,7 +40,8 @@ class PluginBrowserUpdates(mobase.IPluginDiagnose):
         count = len(self.__outdated_plugins)
         list = ""
         for p in self.__outdated_plugins.values():
-            list += f"- <b>{p["name"]}</b>: {p["version"]} -> {p.get("latest_version", "???")}<br>" 
+                if "latest_version" in p: 
+                    list += f"- <b>{p["name"]}</b>: {p["version"]} -> {p.get("latest_version", "???")}<br>" 
         return f"New versions of {count} installed Mod Organizer 2 extensions are available.<br><br>{list}"
     
     def hasGuidedFix(self, problem_id: int) -> bool: return False
@@ -53,10 +54,11 @@ class PluginBrowserUpdates(mobase.IPluginDiagnose):
 
     # Custom code
     
-    def _on_update_found(self, uid: str, latest_file: NexusModsFilesInGroup | ModFilesResult, managed_plugin: ManagedPlugin):
+    def _on_update_found(self, uid: str, latest_file: NexusModsFilesInGroup | ModFilesResult, managed_plugin: ManagedVersion):
+        LOGGER.info(f"Update found: {uid} -> {latest_file} -> {managed_plugin}")
         if latest_file.get("version") is not None:
             assert latest_file is ModFilesResult
-            LOGGER.info(f"MO2 Plugin Update found new version of {managed_plugin['name']} {managed_plugin['version']} -> {latest_file['version']}")
+            LOGGER.info(f"MO2 Plugin Update found new version of {managed_plugin.get('name', '???')} {managed_plugin.get('version', "???")} -> {latest_file['version']}")
         elif latest_file.get("file") is not None:
             assert latest_file is NexusModsFilesInGroup
             LOGGER.info(f"MO2 Plugin Update found new version of {managed_plugin['name']} {managed_plugin['version']} -> {latest_file['file']['version']}")

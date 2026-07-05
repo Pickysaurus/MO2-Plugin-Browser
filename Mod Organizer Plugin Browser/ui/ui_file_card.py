@@ -20,13 +20,13 @@ class FileCard(QWidget):
     def __init__(
         self,
         mod_file: NexusModsV3ModFile,
+        handle_download: Callable[[int], None],
+        handle_update: Callable[[int], None],
         has_installed: list[str] = [],
         has_update: bool = False,
-        handle_download = Callable[[int], None],
-        handle_update = Callable[[int], None],
         parent=None,
     ):
-        LOGGER.info(f"Creating file card for {mod_file or file_name}")
+        LOGGER.debug(f"Creating file card for {mod_file or file_name}")
         super().__init__(parent)
 
         # Data props
@@ -34,6 +34,7 @@ class FileCard(QWidget):
         self.installed_uids = has_installed
         self.install_action = handle_download
         self.update_action = handle_update
+        self.mod_file_id = mod_file["id"]
 
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
@@ -126,13 +127,12 @@ class FileCard(QWidget):
             selected = self.version_selector.currentData()
         if selected:
             version = selected.get("version")
-            file_id = selected.get("id")
+            file_id = selected.get("fileId")
             uid = selected["uid"]
             self.focused_version = selected
-            LOGGER.debug(f"Selected version: {version} file id: {file_id}")
+            LOGGER.info(f"Selected version: {version} file id: {file_id} for {self.mod_file_id}")
             changelog = selected["changelogText"] or ["No changelog available"]
             self.changelog_label.setText(''.join(changelog))
-            LOGGER.info(f"Current UID {uid} -- {self.installed_uids}")
             if uid in self.installed_uids: 
                 self.install_btn.setText("Installed")
                 self.install_btn.setEnabled(False)
@@ -147,7 +147,11 @@ class FileCard(QWidget):
         self.install_btn.setText("Queued")
         self.install_btn.setEnabled(False)
         if self.focused_version:
-            self.install_action(self.focused_version["fileId"])
+            file_id = self.focused_version["fileId"]
+            if len(self.installed_uids) > 0:
+                self.update_action(file_id)
+            else: 
+                self.install_action(file_id)
         
     def _on_install_finished(self):
         self.install_btn.setText("Installed")

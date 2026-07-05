@@ -2,7 +2,7 @@ import logging
 import re
 from typing import Literal
 from ..nexusmods_api import NexusModsAPI
-from .plugin_types import ManagedPlugin
+from .plugin_types import ManagedPlugin, ManagedVersion
 from .maintenence_manager import BUS
 from ..nexusmods.nexus_mods_types import NexusModsFilesInGroup
 
@@ -12,16 +12,17 @@ class UpdateChecker:
     def __init__(self, api: NexusModsAPI) -> None:
         self.api = api
 
-    def check_plugin_for_update(self, plugin: ManagedPlugin) -> NexusModsFilesInGroup | None:
-        if not plugin: return
+    def check_plugin_for_update(self, installed_version: ManagedVersion) -> NexusModsFilesInGroup | None:
+        if not installed_version: return
 
-        group_id = plugin['group_id']
-        version = plugin['version']
+        group_id = installed_version["mod_file_id"]
+        version = installed_version['version']
+        version_name = installed_version.get("name", "Unknown")
 
         try:
             grouped_files = self.api.get_versions_for_file(group_id)
             if not grouped_files:
-                LOGGER.warning(f"No grouped files found for {plugin['name']}")
+                LOGGER.warning(f"No grouped files found for {version_name}")
                 return None
             filtered = [f for f in grouped_files if f["category"] == "main"]
             filtered.sort(key=lambda x: float(x.get("position", "999.0")))
@@ -31,17 +32,17 @@ class UpdateChecker:
                 latest_version = latest_file["version"]
                 is_update = compare_versions(latest_version, version)
                 if is_update == 1:
-                    LOGGER.info(f"Found update on {plugin['name']}")
+                    LOGGER.info(f"Found update on {version_name}")
                     # Update local data
                     return latest_file
                 elif is_update == 0: 
-                    LOGGER.info(f"No update for {plugin['name']}")
+                    LOGGER.info(f"No update for {version_name}")
                     return None
                 else:
-                    LOGGER.info(f"Installed version of {plugin['name']} is newer than the version on Nexus Mods: Current ({version}) -> Nexus Mods ({latest_version})")
+                    LOGGER.info(f"Installed version of {installed_version['name']} is newer than the version on Nexus Mods: Current ({version}) -> Nexus Mods ({latest_version})")
                     
         except Exception as e:
-            LOGGER.error(f"Failed to check for updates on {plugin['name']}: {e}")
+            LOGGER.error(f"Failed to check for updates on {installed_version['name']}: {e}")
             return None
 
 def parse_version(version_str: str) -> tuple[int, ...]:

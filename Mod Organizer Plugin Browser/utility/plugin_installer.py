@@ -10,7 +10,7 @@ from typing import List, Literal, Optional
 from PyQt6.QtCore import QObject, pyqtSignal, QCoreApplication # type: ignore
 from ..messenger import BUS
 from ..nexusmods_api import NexusModsAPI
-from .managed_plugins import ManagedPlugins
+from .managed_plugins import ManagedPlugins, ManagedVersion
 from ..nexusmods.nexus_mods_types import ModFilesResult, ModNode
 from ..nexusmods.nexus_mods_errors import NexusModsAPIKeyMissingError
 
@@ -150,6 +150,7 @@ class PluginInstaller(QObject):
 
     def _finish_installation(self, archive_path: str, mod_node: ModNode, metadata: ModFilesResult, type: Literal['install', 'update']):
         """Shared logic for both local and newly downloaded files."""
+        LOGGER.info(f"Finishing install: {archive_path} - {mod_node["name"]} = {metadata} - {type}")
         try:
             if type == 'install':
                 tmp_dir_context = tempfile.TemporaryDirectory()
@@ -176,23 +177,22 @@ class PluginInstaller(QObject):
             
             if type == 'install':
                 file_list = self._install_plugin(source, plugins_path)
-                self.installed_manager.add_managed_plugin(mod_node.get("uid"), [
-                        { 
-                            "name": metadata["name"],
-                            "version": metadata["version"], 
-                            "file_uid": metadata["uid"],
-                            "mod_file_id": int(metadata["groupId"]),
-                            "files": file_list
-                        }
-                    ]
+                self.installed_manager.add_managed_plugin(mod_node.get("uid"), str(metadata["groupId"]),
+                    { 
+                        "name": metadata["name"],
+                        "version": metadata["version"], 
+                        "file_uid": metadata["uid"],
+                        "mod_file_id": int(metadata["groupId"]),
+                        "files": file_list
+                    }
                 )
+                LOGGER.info("Added MO2 plugin to mainfest")
             elif type == 'update':
-                LOGGER.info("Updating existing plugin")
                 currentMod = self.installed_manager.get_managed_plugin(mod_node.get("uid"))
                 if not currentMod: raise Exception(f"Could not update {mod_node.get("name", "Unknown plugin")} as it is not managed")
-                installed_files = currentMod.get("versions", []);
-                current_versions = [v for v in installed_files if v["mod_file_id"] == metadata["groupId"]]
-                for version in current_versions:
+                current_versions = currentMod.get("versions", []);
+                # Go through the installed groups
+                for version in current_versions.values():
                     for file in version["files"] if version["files"] else []:
                         BUS.queue_delete_on_restart_op.emit(file)
                 
@@ -201,20 +201,20 @@ class PluginInstaller(QObject):
                     BUS.queue_move_on_restart_op.emit(s, d)
                     file_list.append(d)
 
-                del currentMod["latest_file_id"]
-                del currentMod["latest_version"]
-                filtered = [v for v in installed_files if v["mod_file_id"] != metadata["groupId"]]
-                filtered.append({ 
+                if version.get("latest_file_id") is not None: del version["latest_file_id"]
+                if version.get("latest_version") is not None: del version["latest_version"]
+                new_version: ManagedVersion = { 
                     "name": metadata["name"],
                     "version": metadata["version"], 
                     "mod_file_id": int(metadata["groupId"]), 
                     "file_uid": metadata["uid"],
                     "files": file_list
-                })
-                self.installed_manager.add_managed_plugin(currentMod["uid"], filtered)  
+                }
+                self.installed_manager.add_managed_plugin(currentMod["uid"], metadata["groupId"], new_version)  
                 
             BUS.focus_plugin_browser.emit()
             BUS.relaunch_required.emit(True)
+            LOGGER.info(f"Emiting install complete: {mod_node.get("uid")}")
             self.install_complete.emit(mod_node.get("uid"))
         except Exception as e:
             self.error_occurred.emit(str(e), e)

@@ -18,7 +18,7 @@ class MaintenanceManager:
         """Queues a file or directory for deletion."""
         path_type = Path(path)
         self._task_queue.append({'type': 'delete', 'path': str(path_type)})
-        LOGGER.info(f"Queued for deletion: {path_type.name}")
+        LOGGER.debug(f"Queued for deletion: {path_type.name}")
 
     def add_move_task(self, src: str, dst: str):
         """Queues a file or directory to be moved/overwritten."""
@@ -30,7 +30,7 @@ class MaintenanceManager:
             'dst': str(dst_path),
             'is_dir': src_path.is_dir()
         })
-        LOGGER.info(f"Queued for move: {src_path.name} -> {dst_path.name}")
+        LOGGER.debug(f"Queued for move: {src_path.name} -> {dst_path.name}")
 
     def has_tasks(self) -> bool:
         return len(self._task_queue) > 0

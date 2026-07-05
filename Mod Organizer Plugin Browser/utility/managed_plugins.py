@@ -10,14 +10,14 @@ from .plugin_types import ManagedPlugin, ManagedVersion
 
 this_plugin: ManagedPlugin = {
     "uid": "9856949946062",
-    # "name": "Plugin Browser for Mod Organizer 2",
-    # "mod_id": 1742,
-    "versions": [{
+    "versions": { 
+        "724341": {
         "name": "Plugin Browser for Mod Organizer 2",
         "version": VERSION.displayString(),
         "mod_file_id": 7243541,
         "files": None
-    }],
+        }
+    },
 }
 
 class ManagedPlugins:
@@ -43,27 +43,43 @@ class ManagedPlugins:
             parsed = json.loads(raw)
             parsed[this_plugin["uid"]] = this_plugin
             self.logger.debug(f"Loaded plugins from JSON {parsed}")
+            ## We should validate the shape change here. 
             return parsed
         except (json.JSONDecodeError, Exception) as e:
             self.logger.error(f"Failed to load managed plugins: {e}")
             return result
 
-    def add_managed_plugin(self, mod_uid: str, versions: List[ManagedVersion]):
+    def add_managed_plugin(self, mod_uid: str, mod_file_id: str, version: ManagedVersion):
         """Adds or updates a plugin in the managed list."""
-        self.logger.debug(f"Adding managed plugin ({mod_uid}) {versions}")
-        if self.managed[mod_uid]:
-            self.managed[mod_uid]["versions"] = versions
+        self.logger.info(f"Adding managed plugin {mod_uid} -> {mod_file_id} -> {version}")
+        if mod_uid in self.managed:
+            self.managed[mod_uid]["versions"][mod_file_id] = version
         else:
-            self.managed[mod_uid] = { "uid": mod_uid,"versions": versions }
-            self._save_to_disk()
+            mod_entry: ManagedPlugin = { "uid": mod_uid,"versions": { mod_file_id: version } }
+            self.logger.info(f"Creating new mod entry {self.managed}, {mod_uid}:{mod_entry},")
+            self.managed[mod_uid] = mod_entry
+
+        self.logger.info(f"Added managed plugin {self.managed[mod_uid]}")
+        
+        self._save_to_disk()
 
     def remove_managed_plugin(self, mod_uid: str, mod_file_id):
-        self.logger.debug(f"Removing managed plugin ({mod_uid}-{mod_file_id})")
-        mod = self.managed[mod_uid]
-        if mod:
-            mod["versions"] = [v for v in mod["versions"] if v["mod_file_id"] != mod_file_id]
-            if len(mod["versions"]) == 0: del self.managed[mod_uid]
-            self._save_to_disk()
+        self.logger.info(f"Removing managed plugin ({mod_uid}-{mod_file_id})")
+
+        mod = self.managed.get(mod_uid)
+        if not mod: return
+
+        versions = mod.get("versions", {})
+        if mod_file_id in versions:
+            self.logger.info(f"Removing version ({versions[mod_file_id]})")
+            del versions[mod_file_id]
+        
+        if not versions:
+            self.logger.info(f"Removing mod entry ({mod})")
+            self.managed.pop(mod_uid, None)
+            
+        self.logger.info(f"Post-delete object ({self.managed.get(mod_uid), None})")
+        self._save_to_disk()
 
     def get_managed_plugin(self, uid: str) -> ManagedPlugin | None:
         return self.managed[uid]
@@ -77,9 +93,9 @@ class ManagedPlugins:
         matches = []
 
         for plugin in self.managed.values():
-            for version in plugin.get("versions", []):
-                if version["mod_file_id"] == str(file_id):
-                    matches.append(version["mod_file_id"])
+            if plugin.get("versions", {}).get(file_id, None): 
+                if plugin["versions"][file_id].get("file_uid"): 
+                    matches.append(plugin["versions"][file_id].get("file_uid"))
 
         return matches
     
@@ -89,22 +105,22 @@ class ManagedPlugins:
         if not mod:
             return
         
-        updated = False
+        mod_file = mod["versions"][mod_file_id]
 
-        for version_entry in mod.get("versions", []):
-            if str(version_entry.get("mod_file_id")) == str(mod_file_id):
-                version_entry["latest_version"] = version
-                version_entry["latest_file_id"] = file_id
-                updated = True
-                break
+        if not mod_file:
+            return
+
+        mod_file["latest_file_id"] = file_id
+        mod_file["latest_version"] = version
         
-        if updated: self._save_to_disk()
+        self._save_to_disk()
 
-    def clear_update(self, uid: str):
-        self.logger.debug(f"Clearing update info to managed plugin ({uid})")
-        if uid in self.managed:
-            del self.managed[uid]["latest_file_id"]
-            del self.managed[uid]["latest_version"]
+    def clear_update(self, mod_uid: str, mod_file_id: str):
+        self.logger.debug(f"Clearing update info to managed plugin ({mod_uid})")
+        version = self.managed[mod_uid][mod_file_id]
+        if version:
+            del version["latest_file_id"]
+            del version["latest_version"]
             self._save_to_disk()
 
     def _save_to_disk(self):
@@ -159,21 +175,22 @@ class UpdateWorker(QObject):
         """The main loop that runs inside the QThread."""
         self.api.check_thread_affinity()
         for plugin in self.manager.get_all():
-            for version in plugin["versions"]:
-                self.manager.logger.info(f"Checking for update on {version['name']}")
+            for version in plugin["versions"].items():
+                [key, ver] = version
+                self.manager.logger.info(f"Checking for update on {ver.get("name", "Unknown Plugin")}")
                 uid = plugin["uid"]
 
                 try:
                     # Get all files in the group
-                    latest_file = self.update_checker.check_plugin_for_update(plugin=plugin)
+                    latest_file = self.update_checker.check_plugin_for_update(ver)
                     if latest_file: 
                         self.manager.set_update_available(
-                            uid, 
-                            mod_file_id=latest_file[""]
+                            uid=uid, 
+                            mod_file_id=key,
                             version=latest_file["version"],
                             file_id=int(latest_file["id"])
                         )
-                        self.update_found.emit(uid, latest_file, plugin)
+                        self.update_found.emit(uid, latest_file, ver)
                 except Exception as e:
-                    self.manager.logger.warning(f"Update check failed for {version['name']}: {e}")
+                    self.manager.logger.warning(f"Update check failed for {ver['name']}: {e}")
         self.finished.emit()
