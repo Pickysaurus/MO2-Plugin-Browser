@@ -211,16 +211,18 @@ class BrowserDialog(QDialog):
         update_count = 0
         plugins = self.installed_manager.get_all()
         for p in plugins:
-            new_version = self.update_checker.check_plugin_for_update(p)
-            if not new_version: continue
-            uid = p["uid"]
-            self.installed_manager.set_update_available(
-                uid, 
-                version=new_version["version"],
-                file_id=int(new_version["file"]["id"])
-            )
-            BUS.update_available.emit(uid, new_version, p)
-            update_count += 1
+            for v in p["versions"].values():
+                new_version = self.update_checker.check_plugin_for_update(v)
+                if not new_version: continue
+                uid = p["uid"]
+                self.installed_manager.set_update_available(
+                    uid, 
+                    str(v["mod_file_id"]),
+                    version=new_version["version"],
+                    file_id=int(new_version["file"]["id"])
+                )
+                BUS.update_available.emit(uid, new_version, p)
+                update_count += 1
         return update_count
 
     

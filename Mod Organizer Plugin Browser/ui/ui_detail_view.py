@@ -327,9 +327,11 @@ class DetailView(QWidget):
     
     def handle_download_clicked(self, newId: Optional[int]):
         if not self.mod_node: return
+
+        LOGGER.debug(f"Handling install: override ID {newId}")
     
         try:
-            self.installer.start_install(self.mod_node, "install", None)
+            self.installer.start_install(self.mod_node, "install", newId)
         except NexusModsAPIKeyMissingError:
             api_key_entry = APIKeyEntry(self.api, self.content)
             if api_key_entry.exec() == QDialog.DialogCode.Accepted:
@@ -344,6 +346,8 @@ class DetailView(QWidget):
 
         plugin = self.installed_manager.get_managed_plugin(self.mod_node.get("uid"))
         newId = new_id or plugin.get("latest_file_id", None) if plugin else None
+
+        LOGGER.debug(f"Handling update: override ID: {new_id}, resolved: {newId}")
     
         try:
             self.installer.start_install(self.mod_node, "update", newId)

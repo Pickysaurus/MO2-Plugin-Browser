@@ -149,8 +149,10 @@ class FileCard(QWidget):
         if self.focused_version:
             file_id = self.focused_version["fileId"]
             if len(self.installed_uids) > 0:
+                LOGGER.debug(f"Sending install for {file_id}")
                 self.update_action(file_id)
             else: 
+                LOGGER.debug(f"Sending update for {file_id}")
                 self.install_action(file_id)
         
     def _on_install_finished(self):

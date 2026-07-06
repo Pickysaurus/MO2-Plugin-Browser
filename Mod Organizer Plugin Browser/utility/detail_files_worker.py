@@ -33,8 +33,9 @@ class DetailFilesWorker(QObject):
             # Example of a second request per file group:
             for file_obj in mod_files:
                 group_id = file_obj["id"]
-                filtered = [f for f in file_list["modFiles"] if f["groupId"]] if group_id else []
+                filtered = [f for f in file_list["modFiles"] if str(f["groupId"]) == str(group_id)] if group_id else []
                 filtered.sort(key=lambda x: int(x.get("fileId", "999.0")), reverse=True)
+                LOGGER.debug(f"Filtered version for group {group_id}: {len(filtered)}")
                 file_obj["versions"] = filtered
 
             self.files_loaded.emit(mod_files)
