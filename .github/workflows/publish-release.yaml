@@ -17,7 +17,7 @@ jobs:
       contents: write
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Extract Version from constants.py
         id: get_version
@@ -52,7 +52,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Create Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: v${{ steps.get_version.outputs.VERSION }}
           name: Release v${{ steps.get_version.outputs.VERSION }}
@@ -68,10 +68,10 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload to Nexus Mods
-        uses: Nexus-Mods/upload-action@main
+        uses: Nexus-Mods/upload-action@v1.0.0-beta.8
         with:
           api_key: ${{ secrets.NEXUSMODS_API_KEY }}
-          file_group_id: ${{ vars.NEXUSMODS_FILE_GROUP }}
+          file_id: ${{ vars.NEXUSMODS_FILE_GROUP }}
           display_name: MO2 Plugin Browser
           filename: Mod-Organizer-Plugin-Browser-v${{ steps.get_version.outputs.VERSION }}.zip
           version: ${{ steps.get_version.outputs.VERSION }}
