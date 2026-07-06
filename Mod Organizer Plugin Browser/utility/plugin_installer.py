@@ -145,12 +145,12 @@ class PluginInstaller(QObject):
         if staging_path.exists():
             shutil.rmtree(staging_path) # Clean up old failed attempts
         staging_path.mkdir(parents=True, exist_ok=True)
-        LOGGER.info(f"Temporary update staging at {str(staging_path)}")
+        LOGGER.debug(f"Temporary update staging at {str(staging_path)}")
         return str(staging_path)
 
     def _finish_installation(self, archive_path: str, mod_node: ModNode, metadata: ModFilesResult, type: Literal['install', 'update']):
         """Shared logic for both local and newly downloaded files."""
-        LOGGER.info(f"Finishing install: {archive_path} - {mod_node["name"]} = {metadata} - {type}")
+        LOGGER.debug(f"Finishing install: {archive_path} - {mod_node["name"]} = {metadata} - {type}")
         try:
             if type == 'install':
                 tmp_dir_context = tempfile.TemporaryDirectory()
@@ -168,7 +168,7 @@ class PluginInstaller(QObject):
 
             # Check if it's a theme and change the path
             if mod_node['modCategory']["name"] == "Mod Organizer 2 Themes":
-                LOGGER.info("Identified plugin as theme, changing destination path")
+                LOGGER.debug("Identified plugin as theme, changing destination path")
                 plugins_path = os.path.join(QCoreApplication.applicationDirPath(), "stylesheets")
                 if os.path.exists(os.path.join(source, "stylesheets")):
                     source = os.path.join(source, "stylesheets");
@@ -186,7 +186,6 @@ class PluginInstaller(QObject):
                         "files": file_list
                     }
                 )
-                LOGGER.info("Added MO2 plugin to mainfest")
             elif type == 'update':
                 currentMod = self.installed_manager.get_managed_plugin(mod_node.get("uid"))
                 if not currentMod: raise Exception(f"Could not update {mod_node.get("name", "Unknown plugin")} as it is not managed")
@@ -214,7 +213,6 @@ class PluginInstaller(QObject):
                 
             BUS.focus_plugin_browser.emit()
             BUS.relaunch_required.emit(True)
-            LOGGER.info(f"Emiting install complete: {mod_node.get("uid")}")
             self.install_complete.emit(mod_node.get("uid"))
         except Exception as e:
             self.error_occurred.emit(str(e), e)
@@ -260,7 +258,7 @@ class PluginInstaller(QObject):
                     installed_files.append(d_file)
                 except PermissionError:
                     # Requirement: Record permission errors to queue for later
-                    LOGGER.info(f"Access denied to {file_name}, queuing for restart.")
+                    LOGGER.debug(f"Access denied to {file_name}, queuing for restart.")
                     # Using the MaintenanceManager bus created earlier
                     BUS.queue_move_on_restart_op.emit(s_file, d_file)
                     installed_files.append(d_file)

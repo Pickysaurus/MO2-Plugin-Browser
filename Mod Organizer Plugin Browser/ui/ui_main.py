@@ -174,7 +174,10 @@ class BrowserDialog(QDialog):
             has_update = False
             if is_installed:
                 managed = self.installed_manager.get_managed_plugin(uid)
-                has_update = "latest_version" in managed.keys() if managed else False
+                if not managed: 
+                    break
+                updates = [v for v in managed["versions"].values() if v.get("latest_version")]
+                has_update = len(updates) > 0
             tile = ModTile(node, self.image_manager, is_installed, has_update)
 
             tile.clicked.connect(self.show_details)

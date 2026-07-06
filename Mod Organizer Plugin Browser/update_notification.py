@@ -55,7 +55,7 @@ class PluginBrowserUpdates(mobase.IPluginDiagnose):
     # Custom code
     
     def _on_update_found(self, uid: str, latest_file: NexusModsFilesInGroup | ModFilesResult, managed_plugin: ManagedVersion):
-        LOGGER.info(f"Update found: {uid} -> {latest_file} -> {managed_plugin}")
+        LOGGER.debug(f"Update found: {uid} -> {latest_file} -> {managed_plugin}")
         if latest_file.get("version") is not None:
             assert latest_file is ModFilesResult
             LOGGER.info(f"MO2 Plugin Update found new version of {managed_plugin.get('name', '???')} {managed_plugin.get('version', "???")} -> {latest_file['version']}")

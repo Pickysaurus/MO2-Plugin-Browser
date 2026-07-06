@@ -372,7 +372,7 @@ class DetailView(QWidget):
         if len(versions_to_remove) == 0: return
 
         for version in versions_to_remove:
-            LOGGER.info(f"Removing version(s): {version} -({self.mod_node["uid"]} -- {version['mod_file_id']})")
+            LOGGER.debug(f"Removing version(s): {version} -({self.mod_node["uid"]} -- {version['mod_file_id']})")
             self.installed_manager.remove_managed_plugin(self.mod_node["uid"], str(version["mod_file_id"]))
             for file in version.get("files") or []:
                 BUS.queue_delete_on_restart_op.emit(file)

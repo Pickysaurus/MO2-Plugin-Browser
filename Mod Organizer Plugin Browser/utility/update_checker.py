@@ -32,17 +32,17 @@ class UpdateChecker:
                 latest_version = latest_file["version"]
                 is_update = compare_versions(latest_version, version)
                 if is_update == 1:
-                    LOGGER.info(f"Found update on {version_name}")
+                    LOGGER.info(f"Found update on MO2 plugin '{version_name}'")
                     # Update local data
                     return latest_file
                 elif is_update == 0: 
-                    LOGGER.info(f"No update for {version_name}")
+                    LOGGER.info(f"No update for MO2 plugin '{version_name}'")
                     return None
                 else:
-                    LOGGER.info(f"Installed version of {installed_version['name']} is newer than the version on Nexus Mods: Current ({version}) -> Nexus Mods ({latest_version})")
+                    LOGGER.info(f"Installed version of MO2 plugin '{installed_version['name']}' is newer than the version on Nexus Mods: Current ({version}) -> Nexus Mods ({latest_version})")
                     
         except Exception as e:
-            LOGGER.error(f"Failed to check for updates on {installed_version['name']}: {e}")
+            LOGGER.error(f"Failed to check for updates on '{installed_version['name']}': {e}")
             return None
 
 def parse_version(version_str: str) -> tuple[int, ...]:

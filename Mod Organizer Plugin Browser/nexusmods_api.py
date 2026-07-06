@@ -51,8 +51,7 @@ class NexusModsAPI(NexusClient):
             elif filter_category == "Themes":
                 category_filter= { "op": "EQUALS", "value": "Mod Organizer 2 Themes" }
             else:
-                log_msg = f"Unrecognised filter category: {filter_category}"
-                LOGGER.info(log_msg)
+                LOGGER.info(f"Unrecognised filter category: {filter_category}")
                 category_filter = { "op": "EQUALS", "value": filter_category }
             variables["filter"]["categoryName"] = category_filter
         else:
@@ -67,8 +66,6 @@ class NexusModsAPI(NexusClient):
         if search_term is not None:
             variables["filter"]["name"] = { "op": "WILDCARD", "value": search_term }
 
-        # log_msg = f"Get extensions. Sort: {sort}, Variables {variables}"
-        # LOGGER.info(log_msg)
         # Make a graphQL request to fetch the MO2 plugins in the correct category.
         payload = {
             "operationName": "GetMO2Extensions",
@@ -149,7 +146,7 @@ class NexusModsAPI(NexusClient):
 
     
     def endorse_mod(self, game_domain: str, mod_id: int) -> bool:
-        LOGGER.info(f"Endorsing {game_domain}/{mod_id}")
+        LOGGER.debug(f"Endorsing {game_domain}/{mod_id}")
         path = f"v1/games/{game_domain}/mods/{mod_id}/endorse.json"
         url = QUrl(f"{self.base_url}/{path}")
 
@@ -158,11 +155,11 @@ class NexusModsAPI(NexusClient):
         return True
 
     def abstain_mod(self, game_domain: str, mod_id: int) -> bool:
-        LOGGER.info(f"Abstaining {game_domain}/{mod_id}")
+        LOGGER.debug(f"Abstaining {game_domain}/{mod_id}")
         path = f"v1/games/{game_domain}/mods/{mod_id}/abstain.json"
         url = QUrl(f"{self.base_url}/{path}")
 
         reply_data = self.send_request("POST", url, requires_auth=True)
         if not reply_data: return False
-        LOGGER.info(f"Abstain reply {reply_data}")
+        LOGGER.debug(f"Abstain reply {reply_data}")
         return True

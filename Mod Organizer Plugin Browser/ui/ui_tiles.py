@@ -159,7 +159,7 @@ class ModTile(QFrame):
             self._get_image(mod_node.get('uploader', {}).get("avatar"))
     
     def _apply_thumb(self, pixmap: QPixmap | None, url: str):
-        LOGGER.info(f"Applying thumbnail: {url}. Is visible {self.isVisible()} Parent: {self.parent()} Attrib: {self.image_label}")
+        LOGGER.debug(f"Applying thumbnail: {url}. Is visible {self.isVisible()} Parent: {self.parent()} Attrib: {self.image_label}")
         try:
             if not self.isVisible(): return
             if pixmap is None or not self.parent(): return
@@ -172,25 +172,25 @@ class ModTile(QFrame):
                 Qt.AspectRatioMode.KeepAspectRatioByExpanding,
                 Qt.TransformationMode.SmoothTransformation
             )
-            LOGGER.info(f"Scaled Pixmap for: {self.image_label} {scaled_pixmap} - {url} Size:{self.image_label.size()}")
+            LOGGER.debug(f"Scaled Pixmap for: {self.image_label} {scaled_pixmap} - {url} Size:{self.image_label.size()}")
             
             self.image_label.setPixmap(scaled_pixmap)
-            LOGGER.info("Thumbnail set")
+            LOGGER.debug("Thumbnail set")
         except (RuntimeError, AttributeError): 
             LOGGER.warning('Failed to load thumbnail with RuntimeError or AttributeError')
             pass # Widget was deleted
 
     def _apply_avatar(self, pixmap: QPixmap | None, url: str):    
-        LOGGER.info(f"Applying avatar: {url}. Is visible {self.isVisible()} Parent: {self.parent()} Attrib: {self.author_avatar}")
+        LOGGER.debug(f"Applying avatar: {url}. Is visible {self.isVisible()} Parent: {self.parent()} Attrib: {self.author_avatar}")
         try:
             if not self.isVisible(): return
             if pixmap is None or not self.parent(): return
             # Note: width() might be 0 if the widget isn't shown yet, 
             # so use the fixed size 20 we set in __init__
             rounded = self.get_rounded_pixmap(pixmap, 20)
-            LOGGER.info(f"Rounded Pixmap for: {self.image_label} {rounded} - {url} - Size:{self.author_avatar.size()}")
+            LOGGER.debug(f"Rounded Pixmap for: {self.image_label} {rounded} - {url} - Size:{self.author_avatar.size()}")
             self.author_avatar.setPixmap(rounded)
-            LOGGER.info("Avatar set")
+            LOGGER.debug("Avatar set")
         except (RuntimeError, AttributeError):
             LOGGER.warning('Failed to load avatar with RuntimeError or AttributeError')
             pass

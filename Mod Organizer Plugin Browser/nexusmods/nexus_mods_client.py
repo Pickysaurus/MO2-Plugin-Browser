@@ -67,7 +67,7 @@ class NexusClient:
         self.api_key = api_key
         self.api_key_validated = validated
         self._organizer.setPluginSetting("Plugin Browser", "api_key", str(api_key))
-        LOGGER.info("API key saved to Plugin Browser -> api_key")
+        LOGGER.debug("API key saved to Plugin Browser -> api_key")
 
 
     def _build_request(self, url: QUrl, requires_auth: bool, override_headers: Optional[Dict[bytes, bytes]] = None) -> Optional[QNetworkRequest]:

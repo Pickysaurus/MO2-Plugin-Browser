@@ -132,5 +132,5 @@ class PluginBrowser(mobase.IPluginTool):
         return plugin_list
     
     def focus_browser(self):
-        LOGGER.info("Focus requested pluginbrowser")
+        LOGGER.debug("Focus requested pluginbrowser")
         self.display()

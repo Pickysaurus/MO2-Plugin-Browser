@@ -1,12 +1,12 @@
 import json
 import logging
 from pathlib import Path
-from typing import Iterable, Dict, List
+from typing import Iterable, Dict
 from PyQt6.QtCore import QCoreApplication, QObject, pyqtSignal, QThread # type: ignore
 from ..nexusmods_api import NexusModsAPI
 from ..utility.update_checker import UpdateChecker
 from ..constants import VERSION
-from .plugin_types import ManagedPlugin, ManagedVersion
+from .plugin_types import ManagedPlugin, ManagedVersion, AllManagedPlugins
 
 this_plugin: ManagedPlugin = {
     "uid": "9856949946062",
@@ -27,6 +27,7 @@ class ManagedPlugins:
         plugins_meta = app_dir / "plugins" / "managed_plugins.json"
         self.logger = logging.getLogger("MO2PluginsInstalledManager")
         self.file_path = plugins_meta
+        self.api = api
         self.managed = self.get_installed_from_file()
         self.check_for_updates_async(api)
 
@@ -43,42 +44,87 @@ class ManagedPlugins:
             parsed = json.loads(raw)
             parsed[this_plugin["uid"]] = this_plugin
             self.logger.debug(f"Loaded plugins from JSON {parsed}")
-            ## We should validate the shape change here. 
+            parsed = self.valid_or_migrate_stored(parsed) 
             return parsed
         except (json.JSONDecodeError, Exception) as e:
             self.logger.error(f"Failed to load managed plugins: {e}")
             return result
+    
+    def valid_or_migrate_stored(self, raw: Dict[str, dict]) -> Dict[str, ManagedPlugin]:
+        mods = raw.items()
+        result = {}
+        updated = False
+        for mod in mods:
+            [mod_uid, plugin] = mod
+            # if these fields exist, we've got an older manifest
+            mod_name = plugin.get("name")
+            mod_version = plugin.get("version")
+            group_id = plugin.get("group_id")
+            latest_version = plugin.get("latest_version")
+            latest_file_id = plugin.get("latest_file_id")
+            if mod_name and mod_version and group_id:
+                self.logger.info(f"Migrating plugin data to new format: {mod_uid}: {plugin}")
+                extra_metadata = None
+                # We need some data from the API to complete the new object.
+                try:
+                    api_versions = self.api.get_versions_for_file(group_id)
+                    if not api_versions: raise Exception("No data returned from API")
+                    matches = [v for v in api_versions if v["version"] == mod_version]
+                    if len(matches): extra_metadata = matches[0]
+                    else: raise Exception(f"No matching versions for {mod_version} in {api_versions}")
+                except Exception as e: 
+                    self.logger.warning(f"Could not fetch metadata for {group_id}: {e}")
+                # Build the new plugin data
+                new_format: ManagedPlugin = {
+                    "uid": mod_uid,
+                    "versions": {
+                        str(group_id): {
+                            "name": mod_name,
+                            "version": mod_version,
+                            "mod_file_id": group_id,
+                            "file_uid": extra_metadata.get("id") if extra_metadata else "",
+                            "files": plugin.get("files")
+                        }
+                    }
+                }
+                if latest_version: new_format["latest_version"] = latest_version
+                if latest_file_id: new_format["latest_file_id"] = latest_file_id
+                result[mod_uid] = new_format
+                updated = True
+            else: result[mod_uid] = plugin
+
+        if updated: self._save_to_disk()
+        
+        assert result is AllManagedPlugins
+        return result
 
     def add_managed_plugin(self, mod_uid: str, mod_file_id: str, version: ManagedVersion):
         """Adds or updates a plugin in the managed list."""
-        self.logger.info(f"Adding managed plugin {mod_uid} -> {mod_file_id} -> {version}")
+        self.logger.debug(f"Adding managed plugin {mod_uid} -> {mod_file_id} -> {version}")
         if mod_uid in self.managed:
             self.managed[mod_uid]["versions"][mod_file_id] = version
         else:
             mod_entry: ManagedPlugin = { "uid": mod_uid,"versions": { mod_file_id: version } }
-            self.logger.info(f"Creating new mod entry {self.managed}, {mod_uid}:{mod_entry},")
+            self.logger.debug(f"Creating new mod entry {self.managed}, {mod_uid}:{mod_entry},")
             self.managed[mod_uid] = mod_entry
-
-        self.logger.info(f"Added managed plugin {self.managed[mod_uid]}")
         
         self._save_to_disk()
 
     def remove_managed_plugin(self, mod_uid: str, mod_file_id):
-        self.logger.info(f"Removing managed plugin ({mod_uid}-{mod_file_id})")
+        self.logger.debug(f"Removing managed plugin ({mod_uid}-{mod_file_id})")
 
         mod = self.managed.get(mod_uid)
         if not mod: return
 
         versions = mod.get("versions", {})
         if mod_file_id in versions:
-            self.logger.info(f"Removing version ({versions[mod_file_id]})")
+            self.logger.debug(f"Removing version ({versions[mod_file_id]})")
             del versions[mod_file_id]
         
         if not versions:
-            self.logger.info(f"Removing mod entry ({mod})")
+            self.logger.debug(f"Removing mod entry ({mod})")
             self.managed.pop(mod_uid, None)
-            
-        self.logger.info(f"Post-delete object ({self.managed.get(mod_uid), None})")
+
         self._save_to_disk()
 
     def get_managed_plugin(self, uid: str) -> ManagedPlugin | None:
@@ -158,8 +204,6 @@ class ManagedPlugins:
         print(f"Thread is running: {self._thread.isRunning()}")
         print(f"Thread priority: {self._thread.priority()}")
 
-
-
     
 class UpdateWorker(QObject):
     finished = pyqtSignal()
@@ -175,9 +219,9 @@ class UpdateWorker(QObject):
         """The main loop that runs inside the QThread."""
         self.api.check_thread_affinity()
         for plugin in self.manager.get_all():
-            for version in plugin["versions"].items():
+            for version in (plugin["versions"] or {}).items():
                 [key, ver] = version
-                self.manager.logger.info(f"Checking for update on {ver.get("name", "Unknown Plugin")}")
+                self.manager.logger.debug(f"Checking for update on MO2 plugin '{ver.get("name", "Unknown Plugin")}'")
                 uid = plugin["uid"]
 
                 try:
