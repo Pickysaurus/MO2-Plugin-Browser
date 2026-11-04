@@ -22,15 +22,16 @@ class FileCard(QWidget):
         mod_file: NexusModsV3ModFile,
         handle_download: Callable[[int], None],
         handle_update: Callable[[int], None],
-        has_installed: list[str] = [],
+        has_installed: list[str] | None = None,
         has_update: bool = False,
         parent=None,
     ):
-        LOGGER.debug(f"Creating file card for {mod_file or file_name}")
+        LOGGER.debug(f"Creating file card for {mod_file.get('name') if mod_file else 'Unknown file'}")  # FIX: file_name использовался до присваивания (UnboundLocalError)
         super().__init__(parent)
+        has_installed = has_installed or []  # FIX: изменяемый аргумент по умолчанию []
 
         # Data props
-        self.focused_version = mod_file["versions"][0] if mod_file["versions"] and mod_file["versions"][0] else None
+        self.focused_version = mod_file["versions"][0] if mod_file and mod_file.get("versions") and mod_file["versions"][0] else None  # FIX: защита от mod_file=None
         self.installed_uids = has_installed
         self.install_action = handle_download
         self.update_action = handle_update
@@ -81,7 +82,7 @@ class FileCard(QWidget):
         self.install_btn.clicked.connect(self._on_install)
 
         file_name = (mod_file.get("name") if mod_file else "Unknown file")
-        if len(has_installed) > 0: file_name = f"✓ {file_name}"
+        if len(self.installed_uids) > 0: file_name = f"✓ {file_name}"
         if has_update: file_name = f"🔄️ {file_name}"
         self.name_label = QLabel(file_name)
         self.name_label.setStyleSheet("font-size: 16px; font-weight: bold; border: 0;")
@@ -109,8 +110,8 @@ class FileCard(QWidget):
         self.changelog_layout.setContentsMargins(0, 0, 0, 0)
         self.changelog_layout.setSpacing(4)
 
-        intialChanglog = mod_file["versions"][0]["changelogText"] if mod_file["versions"] else ["No changelog available"]
-        self.changelog_label = QLabel("".join(intialChanglog))
+        initial_changelog = mod_file["versions"][0]["changelogText"] if mod_file and mod_file.get("versions") else "No changelog available"  # FIX: опечатка intialChanglog; защита от mod_file=None
+        self.changelog_label = QLabel("".join(initial_changelog))
         self.changelog_label.setWordWrap(True)
         self.changelog_layout.addWidget(self.changelog_label)
         self._main_layout.addWidget(self.changelog_container)
@@ -149,10 +150,10 @@ class FileCard(QWidget):
         if self.focused_version:
             file_id = self.focused_version["fileId"]
             if len(self.installed_uids) > 0:
-                LOGGER.debug(f"Sending install for {file_id}")
+                LOGGER.debug(f"Sending update for {file_id}")  # FIX: перепутанные подписи логов install/update
                 self.update_action(file_id)
             else: 
-                LOGGER.debug(f"Sending update for {file_id}")
+                LOGGER.debug(f"Sending install for {file_id}")  # FIX: перепутанные подписи логов install/update
                 self.install_action(file_id)
         
     def _on_install_finished(self):

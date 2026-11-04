@@ -213,7 +213,7 @@ class DetailView(QWidget):
 
     def update_data(self, mod_node: ModNode):
         self.mod_node = mod_node
-        if mod_node["modId"]:
+        if mod_node.get("modId"):  # FIX: безопасный доступ к modId
             self.nexus_mods_btn.setEnabled(True)
         uid = mod_node["uid"]
         self.title.setText(mod_node.get('name', 'Unknown'))
@@ -247,7 +247,7 @@ class DetailView(QWidget):
             installed_data = self.installed_manager.get_managed_plugin(str(uid))
             if installed_data is not None:
                 versions_installed = installed_data.get("versions", [])
-                installed = list(versions_installed.values())[0].get("version", "Unknown")
+                installed = list(versions_installed.values())[0].get("version", "Unknown") if versions_installed else "Unknown"  # FIX: защита от IndexError при пустом списке версий
                 self.download_btn.setText(f"INSTALLED (v {installed})")
                 if installed_data.get("latest_version") is not None:
                     self.update_btn.setEnabled(True)
@@ -255,7 +255,7 @@ class DetailView(QWidget):
                     self.update_btn.setText(f"UPDATE (v{installed_data.get('latest_version')})")
             self.download_btn.setDisabled(True)
             self.endorse_btn.setVisible(True)
-            if mod_node["viewerEndorsed"] == True:
+            if mod_node.get("viewerEndorsed") == True:  # FIX: безопасный доступ к viewerEndorsed
                 self.endorse_btn.setText("✅ ENDORSED")
             else:
                 self.endorse_btn.setText("👍 ENDORSE")
@@ -265,7 +265,7 @@ class DetailView(QWidget):
             self.update_btn.setVisible(False)
             self.endorse_btn.setVisible(False)
             self.endorse_btn.setEnabled(True)
-            self.populate_files_section([])
+            # FIX: убран лишний populate_files_section([]) — он затирал уже загруженный список файлов
 
     def _set_image(self, pixmap: QPixmap | None, url: str):
         if pixmap and not self.isHidden():
@@ -345,7 +345,7 @@ class DetailView(QWidget):
         if not self.mod_node: return
 
         plugin = self.installed_manager.get_managed_plugin(self.mod_node.get("uid"))
-        newId = new_id or plugin.get("latest_file_id", None) if plugin else None
+        newId = new_id or (plugin.get("latest_file_id") if plugin else None)  # FIX: приоритет операторов — скобки вокруг тернарного оператора
 
         LOGGER.debug(f"Handling update: override ID: {new_id}, resolved: {newId}")
     
@@ -355,7 +355,7 @@ class DetailView(QWidget):
             api_key_entry = APIKeyEntry(self.api, self.content)
             if api_key_entry.exec() == QDialog.DialogCode.Accepted:
                 LOGGER.debug("API key entry successful")
-                return self.handle_download_clicked(newId)
+                return self.handle_update_clicked(newId)  # FIX: рекурсия теперь вызывает handle_update_clicked, а не handle_download_clicked (обновление не превращается в установку)
             else:
                 LOGGER.warning("User did not provide API key, download cancelled")
                 return None
@@ -372,7 +372,7 @@ class DetailView(QWidget):
         if len(versions_to_remove) == 0: return
 
         for version in versions_to_remove:
-            LOGGER.debug(f"Removing version(s): {version} -({self.mod_node["uid"]} -- {version['mod_file_id']})")
+            LOGGER.debug(f"Removing version(s): {version} -({self.mod_node['uid']} -- {version['mod_file_id']})")
             self.installed_manager.remove_managed_plugin(self.mod_node["uid"], str(version["mod_file_id"]))
             for file in version.get("files") or []:
                 BUS.queue_delete_on_restart_op.emit(file)
@@ -383,10 +383,10 @@ class DetailView(QWidget):
 
     def handle_endorse_clicked(self):
         if not self.mod_node: return
-        id = self.mod_node["modId"]
+        id = self.mod_node.get("modId")  # FIX: безопасный доступ к modId
         if not id: return
 
-        prev_state = self.mod_node["viewerEndorsed"]
+        prev_state = self.mod_node.get("viewerEndorsed", False)  # FIX: безопасный доступ к viewerEndorsed
 
         self.endorse_btn.setEnabled(False)
         success = self.api.endorse_mod("site", id) if prev_state != True else self.api.abstain_mod("site", id)

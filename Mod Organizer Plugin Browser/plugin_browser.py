@@ -102,7 +102,7 @@ class PluginBrowser(mobase.IPluginTool):
                 uids=uids,
                 offset=offset
             )
-            LOGGER.debug(f"Mods by UID lookup: {data.get("modsByUid") if data else "BLANK"}")
+            LOGGER.debug(f"Mods by UID lookup: {data.get('modsByUid') if data else 'BLANK'}")  # FIX: вложенные двойные кавычки в f-строке -> SyntaxError на Python 3.11
             data = data.get("modsByUid") if data else None
         else: 
             # 1. Fetch data from your NexusAPI class

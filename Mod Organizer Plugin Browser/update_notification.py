@@ -9,12 +9,13 @@ from .nexusmods.nexus_mods_types import NexusModsFilesInGroup, ModFilesResult
 LOGGER = logging.getLogger("MO2PluginBrowserUpdateNotice")
 
 class PluginBrowserUpdates(mobase.IPluginDiagnose):
-    __outdated_plugins: dict[str, ManagedVersion] = {}
     __organizer: mobase.IOrganizer
     __problem_id: int = 0
 
     def __init__(self):
         super().__init__()
+        # FIX: __outdated_plugins перенесён из атрибута класса в __init__ (состояние не должно быть общим для всех экземпляров)
+        self.__outdated_plugins: dict[str, ManagedVersion] = {}
 
     def init(self, organizer: mobase.IOrganizer):
         self.__organizer = organizer
@@ -56,11 +57,11 @@ class PluginBrowserUpdates(mobase.IPluginDiagnose):
     
     def _on_update_found(self, uid: str, latest_file: NexusModsFilesInGroup | ModFilesResult, managed_plugin: ManagedVersion):
         LOGGER.debug(f"Update found: {uid} -> {latest_file} -> {managed_plugin}")
+        # FIX: assert-проверки типов убраны — assert либо молча пропускал ошибку, либо падал с AssertionError на каждом обновлении;
+        # ветка определяется по структуре полученного объекта (isinstance здесь небезопасен: типы являются TypedDict)
         if latest_file.get("version") is not None:
-            assert latest_file is ModFilesResult
-            LOGGER.info(f"MO2 Plugin Update found new version of {managed_plugin.get('name', '???')} {managed_plugin.get('version', "???")} -> {latest_file['version']}")
+            LOGGER.info(f"MO2 Plugin Update found new version of {managed_plugin.get('name', '???')} {managed_plugin.get('version', '???')} -> {latest_file['version']}")
         elif latest_file.get("file") is not None:
-            assert latest_file is NexusModsFilesInGroup
             LOGGER.info(f"MO2 Plugin Update found new version of {managed_plugin['name']} {managed_plugin['version']} -> {latest_file['file']['version']}")
 
         if uid not in self.__outdated_plugins:

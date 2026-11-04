@@ -152,4 +152,4 @@ class NexusClient:
             return json.loads(raw) if raw else None
         except (json.JSONDecodeError, UnicodeDecodeError) as e:
             LOGGER.error(f"Failed to parse response: {e}")
-            assert NexusModsAPIError(f"Failed to parse response {e}")
+            raise NexusModsAPIError(f"Failed to parse response {e}")  # FIX: было assert — исключение создавалось и молча уничтожалось, ошибка парсинга исчезала

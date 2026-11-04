@@ -21,13 +21,13 @@ class DetailFilesWorker(QObject):
         try:
             mod_files = self.api.get_mod_files_v3(self.mod_uid)
             if not mod_files:
-                self.error.emit(f"No files returned for this mod. {mod_files or "None"}")
+                self.error.emit(f"No files returned for this mod. {mod_files or 'None'}")  # FIX: вложенные двойные кавычки в f-строке -> SyntaxError на Python 3.11
                 return
 
             file_list = self.api.get_mod_files(self.mod_id)
 
             if not file_list or "modFiles" not in file_list:
-                self.error.emit(f"No files returned for this mod. {file_list or "None"}")
+                self.error.emit(f"No files returned for this mod. {file_list or 'None'}")  # FIX: вложенные двойные кавычки в f-строке -> SyntaxError на Python 3.11
                 return
 
             # Example of a second request per file group:

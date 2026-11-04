@@ -174,8 +174,8 @@ class BrowserDialog(QDialog):
             has_update = False
             if is_installed:
                 managed = self.installed_manager.get_managed_plugin(uid)
-                if not managed: 
-                    break
+                if not managed:
+                    continue  # FIX: было break — сетка обрывалась на первом неуправляемом плагине
                 updates = [v for v in managed["versions"].values() if v.get("latest_version")]
                 has_update = len(updates) > 0
             tile = ModTile(node, self.image_manager, is_installed, has_update)
